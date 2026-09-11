@@ -55,9 +55,11 @@ defmodule AppWeb.Router do
     live_session :require_authenticated_user,
       on_mount: [{AppWeb.UserAuth, :require_authenticated}] do
       live "/dashboard", DashboardLive, :index
+      live "/notifications", NotificationLive, :index
       live "/recitations/new/:assignment_id", StudentRecitationLive.New, :new
       live "/recitations/:assignment_id", StudentRecitationLive.Show, :show
       live "/tutor", TutorLive.Dashboard, :index
+      live "/tutor/students/:student_id", TutorLive.StudentProfile, :show
       live "/tutor/reviews/:assignment_id", TutorLive.Review, :show
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email

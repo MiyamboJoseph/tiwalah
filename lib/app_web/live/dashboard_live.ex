@@ -55,6 +55,37 @@ defmodule AppWeb.DashboardLive do
         <.metric title="Ready to record" value={@pending} icon="hero-microphone" />
         <.metric title="Approved" value={@reviewed} icon="hero-check-badge" />
       </section>
+      <section class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your progress</p>
+            <h2 class="mt-1 font-serif text-2xl font-bold text-emerald-950 dark:text-emerald-100">
+              Learning journey
+            </h2>
+          </div>
+          <p class="text-3xl font-bold text-emerald-900">{@progress.approval_rate}%</p>
+        </div>
+        <div class="mt-4 grid gap-4 sm:grid-cols-3">
+          <p class="text-sm text-stone-600">
+            <span class="block text-2xl font-bold text-emerald-950">
+              {@progress.total_submissions}
+            </span>
+            recordings submitted
+          </p>
+          <p class="text-sm text-stone-600">
+            <span class="block text-2xl font-bold text-emerald-950">{@progress.approved}</span>
+            approved
+          </p>
+          <p class="text-sm text-stone-600">
+            <span class="block text-2xl font-bold text-emerald-950">{@progress.repeats}</span>
+            repeats requested
+          </p>
+        </div>
+        <.feedback_categories
+          label="Most frequent correction areas"
+          categories={Enum.map(@progress.focus_areas, &elem(&1, 0))}
+        />
+      </section>
       <section :if={@tutor_requests != []} class="rounded-2xl border border-amber-300 bg-amber-50 p-5">
         <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-800">Tutor requests</p>
         <p class="mt-1 text-sm text-stone-700">
@@ -215,7 +246,8 @@ defmodule AppWeb.DashboardLive do
       assignment_counts: Recitations.assignment_counts(socket.assigns.current_scope),
       page: assignment_page.page,
       total_pages: assignment_page.total_pages,
-      tutor_requests: Recitations.list_pending_tutor_requests(socket.assigns.current_scope)
+      tutor_requests: Recitations.list_pending_tutor_requests(socket.assigns.current_scope),
+      progress: Recitations.student_progress(socket.assigns.current_scope)
     )
   end
 end

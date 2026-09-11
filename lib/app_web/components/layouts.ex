@@ -52,6 +52,12 @@ defmodule AppWeb.Layouts do
           <.theme_toggle />
           <%= if @current_scope && @current_scope.user do %>
             <.link
+              navigate={~p"/notifications"}
+              class="hidden text-sm font-semibold text-emerald-800 sm:block"
+            >
+              Notifications
+            </.link>
+            <.link
               navigate={~p"/dashboard"}
               class="hidden text-sm font-semibold text-emerald-800 sm:block"
             >

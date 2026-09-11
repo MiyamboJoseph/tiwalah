@@ -32,18 +32,45 @@ defmodule AppWeb.TutorLive.Dashboard do
     {:noreply, assign(socket, form: to_form(changeset, as: "assignment"))}
   end
 
+  def handle_event("assign", %{"assignment" => %{"action" => "save_template"} = params}, socket) do
+    attrs = Map.drop(params, ["student_id", "action", "due_date"])
+
+    case Recitations.create_template(socket.assigns.current_scope, attrs) do
+      {:ok, _template} ->
+        {:noreply, socket |> put_flash(:info, "Assignment template saved.") |> load_dashboard()}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: "assignment"))}
+    end
+  end
+
   def handle_event("assign", %{"assignment" => %{"student_id" => student_id} = params}, socket) do
-    case Recitations.create_assignment(
-           socket.assigns.current_scope,
-           student_id,
-           Map.delete(params, "student_id")
-         ) do
+    attrs = Map.drop(params, ["student_id", "action"])
+
+    case Recitations.create_assignment(socket.assigns.current_scope, student_id, attrs) do
       {:ok, _assignment} ->
         {:noreply,
          socket |> put_flash(:info, "Portion assigned successfully.") |> load_dashboard(1)}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset, as: "assignment"))}
+    end
+  end
+
+  def handle_event("apply_template", %{"template_id" => id}, socket) do
+    case Enum.find(socket.assigns.templates, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "That template is unavailable.")}
+
+      template ->
+        values =
+          socket.assigns.form.params
+          |> Map.merge(
+            Map.take(template, [:title, :juz_number, :surah_name, :ayah_from, :ayah_to])
+            |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+          )
+
+        {:noreply, assign(socket, form: to_form(values, as: "assignment"))}
     end
   end
 
@@ -89,6 +116,18 @@ defmodule AppWeb.TutorLive.Dashboard do
           value={@assignment_counts.submitted}
           icon="hero-headphones"
         /><.metric title="Students" value={length(@students)} icon="hero-user-group" />
+      </section>
+      <section :if={@students != []} class="rounded-2xl bg-white p-5 shadow-sm dark:bg-base-200">
+        <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your students</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <.link
+            :for={student <- @students}
+            navigate={~p"/tutor/students/#{student.id}"}
+            class="rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+          >
+            {student_label(student)}
+          </.link>
+        </div>
       </section>
       <section class="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
         <div>
@@ -162,6 +201,26 @@ defmodule AppWeb.TutorLive.Dashboard do
             phx-submit="assign"
             class="mt-5 space-y-3"
           >
+            <div
+              :if={@templates != []}
+              class="rounded-xl border border-emerald-900/10 bg-emerald-50/50 p-3"
+            >
+              <label class="text-sm font-semibold text-emerald-950">Start from a template</label>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  :for={template <- @templates}
+                  type="button"
+                  phx-click="apply_template"
+                  phx-value-template_id={template.id}
+                  class="rounded-lg border border-emerald-800 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                >
+                  {template.title}
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-stone-500">
+                Templates can be saved after entering a portion below.
+              </p>
+            </div>
             <.input
               field={@form[:student_id]}
               type="select"
@@ -195,6 +254,14 @@ defmodule AppWeb.TutorLive.Dashboard do
             <.button class="w-full bg-emerald-800 text-white hover:bg-emerald-900">
               Assign portion
             </.button>
+            <button
+              type="submit"
+              name="assignment[action]"
+              value="save_template"
+              class="w-full rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+            >
+              Save as template
+            </button>
           </.form>
         </aside>
       </section>
@@ -215,7 +282,8 @@ defmodule AppWeb.TutorLive.Dashboard do
       total_pages: assignment_page.total_pages,
       students: Recitations.list_students(scope),
       form: to_form(changeset, as: "assignment"),
-      connection_form: to_form(%{"email" => ""}, as: "connection")
+      connection_form: to_form(%{"email" => ""}, as: "connection"),
+      templates: Recitations.list_templates(scope)
     )
   end
 

@@ -143,6 +143,13 @@ defmodule AppWeb.StudentRecitationLive.New do
                 >
                   Stop & attach
                 </button>
+                <span
+                  data-recording-timer
+                  aria-label="Recording duration"
+                  class="rounded-full bg-rose-50 px-3 py-1 font-mono text-sm font-semibold tabular-nums text-rose-800"
+                >
+                  00:00
+                </span>
                 <span data-status class="text-sm text-stone-600">Or upload a recording below.</span>
                 <.live_file_input upload={@uploads.audio} class="basis-full text-sm" />
                 <p class="basis-full text-xs text-stone-600">

@@ -30,8 +30,11 @@ const AudioRecorder = {
     const recordButton = this.el.querySelector("[data-record]")
     const stopButton = this.el.querySelector("[data-stop]")
     const status = this.el.querySelector("[data-status]")
+    const timer = this.el.querySelector("[data-recording-timer]")
     let recorder
     let chunks = []
+    let timerInterval
+    let recordingStartedAt
     const report = (stage, details = {}) => {
       console.info("[Tilawah recorder]", stage, details)
     }
@@ -44,6 +47,34 @@ const AudioRecorder = {
       if (type === "audio/mpeg") return "mp3"
       if (type === "audio/wav") return "wav"
       return "webm"
+    }
+
+    const formatDuration = (milliseconds) => {
+      const totalSeconds = Math.floor(milliseconds / 1000)
+      const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0")
+      const seconds = (totalSeconds % 60).toString().padStart(2, "0")
+
+      return `${minutes}:${seconds}`
+    }
+
+    const updateTimer = () => {
+      if (timer && recordingStartedAt) {
+        timer.textContent = formatDuration(Date.now() - recordingStartedAt)
+      }
+    }
+
+    const startTimer = () => {
+      recordingStartedAt = Date.now()
+      updateTimer()
+      timerInterval = window.setInterval(updateTimer, 250)
+      this.timerInterval = timerInterval
+    }
+
+    const stopTimer = () => {
+      window.clearInterval(timerInterval)
+      timerInterval = undefined
+      this.timerInterval = undefined
+      updateTimer()
     }
 
     recordButton.addEventListener("click", async () => {
@@ -98,6 +129,7 @@ const AudioRecorder = {
             )
             report("upload_event_dispatched")
             this.stream.getTracks().forEach(track => track.stop())
+            stopTimer()
             status.textContent = "Recording attached. Uploading now…"
           } catch (error) {
             console.error("[Tilawah recorder] upload preparation failed", error)
@@ -106,6 +138,7 @@ const AudioRecorder = {
           }
         })
         recorder.start()
+        startTimer()
         recordButton.disabled = true
         stopButton.disabled = false
         status.textContent = "Recording in progress…"
@@ -121,12 +154,14 @@ const AudioRecorder = {
         report("stop_requested", {state: recorder.state})
         recorder.stop()
       }
+      stopTimer()
       recordButton.disabled = false
       stopButton.disabled = true
     })
 
   },
   destroyed() {
+    window.clearInterval(this.timerInterval)
     this.stream?.getTracks().forEach(track => track.stop())
   },
 }

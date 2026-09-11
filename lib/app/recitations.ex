@@ -4,7 +4,7 @@ defmodule App.Recitations do
   import Ecto.Query
   alias App.Accounts.{Scope, User}
   alias App.Notifications
-  alias App.Recitations.{Assignment, Submission, TutorStudentConnection}
+  alias App.Recitations.{Assignment, AssignmentTemplate, Submission, TutorStudentConnection}
   alias App.Repo
 
   @feedback_categories [
@@ -16,6 +16,79 @@ defmodule App.Recitations do
   ]
 
   def feedback_categories, do: @feedback_categories
+
+  def list_templates(%Scope{user: %User{id: tutor_id, role: :tutor}}) do
+    Repo.all(
+      from template in AssignmentTemplate,
+        where: template.tutor_id == ^tutor_id,
+        order_by: [desc: template.inserted_at]
+    )
+  end
+
+  def create_template(%Scope{user: %User{id: tutor_id, role: :tutor}}, attrs) do
+    %AssignmentTemplate{tutor_id: tutor_id}
+    |> AssignmentTemplate.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def student_progress(%Scope{user: %User{id: student_id, role: :student}}) do
+    submissions = Repo.all(from s in Submission, where: s.student_id == ^student_id)
+    reviewed = Enum.count(submissions, &(&1.status == :reviewed))
+    repeats = Enum.count(submissions, &(&1.status == :repeat_required))
+    total = length(submissions)
+
+    categories =
+      submissions
+      |> Enum.flat_map(&(&1.feedback_categories || []))
+      |> Enum.frequencies()
+      |> Enum.sort_by(fn {_category, count} -> -count end)
+      |> Enum.take(3)
+
+    %{
+      total_submissions: total,
+      approved: reviewed,
+      repeats: repeats,
+      approval_rate: if(total == 0, do: 0, else: round(reviewed * 100 / total)),
+      focus_areas: categories
+    }
+  end
+
+  def student_overview(%Scope{user: %User{id: tutor_id, role: :tutor}}, student_id) do
+    with {:ok, student_id} <- Ecto.Type.cast(:id, student_id),
+         %TutorStudentConnection{status: :active} <-
+           Repo.get_by(TutorStudentConnection,
+             tutor_id: tutor_id,
+             student_id: student_id,
+             status: :active
+           ),
+         %User{} = student <- Repo.get(User, student_id) do
+      assignments =
+        Repo.all(
+          from a in Assignment,
+            where: a.tutor_id == ^tutor_id and a.student_id == ^student_id,
+            preload: [:submissions],
+            order_by: [desc: a.updated_at]
+        )
+
+      submissions = Enum.flat_map(assignments, & &1.submissions)
+
+      trends =
+        submissions
+        |> Enum.flat_map(&(&1.feedback_categories || []))
+        |> Enum.frequencies()
+        |> Enum.sort_by(fn {_item, count} -> -count end)
+
+      {:ok,
+       %{
+         student: student,
+         assignments: assignments,
+         submissions: submissions,
+         correction_trends: trends
+       }}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
 
   def subscribe_tutor(tutor_id), do: Phoenix.PubSub.subscribe(App.PubSub, tutor_topic(tutor_id))
 
@@ -54,6 +127,14 @@ defmodule App.Recitations do
         |> case do
           {:ok, connection} ->
             broadcast_student(student_id, {:recitation_changed, :tutor_request, connection.id})
+
+            Notifications.create(student_id, %{
+              kind: "tutor_request",
+              title: "New tutor request",
+              body: "A tutor would like to guide your recitation.",
+              path: "/dashboard"
+            })
+
             {:ok, connection}
 
           error ->
@@ -78,6 +159,13 @@ defmodule App.Recitations do
               active_connection.tutor_id,
               {:recitation_changed, :student_connected, nil}
             )
+
+            Notifications.create(active_connection.tutor_id, %{
+              kind: "student_connected",
+              title: "Student connection accepted",
+              body: "You can now assign portions to this student.",
+              path: "/tutor"
+            })
 
             {:ok, active_connection}
 
@@ -194,6 +282,13 @@ defmodule App.Recitations do
             {:recitation_changed, :assignment_assigned, assignment.id}
           )
 
+          Notifications.create(student_id, %{
+            kind: "assignment",
+            title: "New recitation assigned",
+            body: assignment.title,
+            path: "/recitations/new/#{assignment.id}"
+          })
+
           {:ok, assignment}
 
         error ->
@@ -259,6 +354,13 @@ defmodule App.Recitations do
           {:recitation_changed, :submission_received, assignment.id}
         )
 
+        Notifications.create(assignment.tutor_id, %{
+          kind: "submission",
+          title: "New recitation to review",
+          body: "#{scope.user.email} submitted #{assignment.title}.",
+          path: "/tutor/reviews/#{assignment.id}"
+        })
+
         {:ok, submission}
 
       {:error, changeset} ->
@@ -321,6 +423,17 @@ defmodule App.Recitations do
             submission.student_id,
             {:recitation_changed, :feedback_sent, submission.assignment_id}
           )
+
+          Notifications.create(submission.student_id, %{
+            kind: "feedback",
+            title:
+              if(reviewed.status == :repeat_required,
+                do: "Repeat requested",
+                else: "Recitation approved"
+              ),
+            body: submission.assignment.title,
+            path: "/recitations/#{submission.assignment_id}"
+          })
 
           broadcast_tutor(
             scope.user.id,
