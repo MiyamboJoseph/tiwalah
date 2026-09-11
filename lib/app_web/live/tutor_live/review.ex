@@ -235,8 +235,32 @@ defmodule AppWeb.TutorLive.Review do
                 />
                 <div class="mt-3">
                   <label class="block text-sm font-medium text-stone-700">
-                    Optional audio example
+                    Tutor audio example <span class="text-stone-400">(optional)</span>
                   </label>
+                  <div
+                    id={"tutor-audio-recorder-#{submission.id}"}
+                    phx-hook="AudioRecorder"
+                    class="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-800/20 bg-white p-3"
+                  >
+                    <button
+                      type="button"
+                      data-record
+                      class="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+                    >
+                      Record example
+                    </button>
+                    <button
+                      type="button"
+                      data-stop
+                      disabled
+                      class="rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Stop & attach
+                    </button>
+                    <span data-status class="text-sm text-stone-600">
+                      Record here or upload an example below.
+                    </span>
+                  </div>
                   <.live_file_input upload={@uploads.tutor_audio} class="mt-2 block w-full text-sm" />
                   <p class="mt-1 text-xs text-stone-500">WEBM, MP3, WAV, M4A, or OGG up to 25 MB.</p>
                   <div

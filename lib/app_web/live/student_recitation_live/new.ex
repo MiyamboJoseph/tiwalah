@@ -86,7 +86,7 @@ defmodule AppWeb.StudentRecitationLive.New do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-2xl">
+      <div class="mx-auto max-w-6xl">
         <.link navigate={~p"/dashboard"} class="text-sm font-semibold text-emerald-800">
           ← Back to my portal
         </.link>

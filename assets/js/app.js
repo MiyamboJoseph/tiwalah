@@ -75,9 +75,9 @@ const AudioRecorder = {
               chunk_count: chunks.length,
             })
 
-            const uploadInput = document.querySelector(
-              "#recitation-submission-form input[type='file'][data-phx-upload-ref]",
-            )
+            const uploadInput = this.el
+              .closest("form")
+              ?.querySelector("input[type='file'][data-phx-upload-ref]")
 
             report("upload_input_lookup", {
               found: Boolean(uploadInput),
