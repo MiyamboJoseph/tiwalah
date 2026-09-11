@@ -79,6 +79,39 @@ defmodule AppWeb.RecitationComponents do
     """
   end
 
+  attr :submission, :map, required: true
+  attr :audio_src, :string, default: nil
+
+  def repeat_guidance(assigns) do
+    visible? =
+      assigns.submission.status == :repeat_required and
+        (assigns.submission.repeat_instruction || assigns.submission.repeat_ayah_from ||
+           assigns.submission.tutor_audio_path)
+
+    assigns = assign(assigns, visible?: visible?)
+
+    ~H"""
+    <section :if={@visible?} class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">Your repeat plan</p>
+      <p :if={@submission.repeat_ayah_from} class="mt-2 text-sm font-semibold text-emerald-950">
+        Focus āyāt: {@submission.repeat_ayah_from}–{@submission.repeat_ayah_to}
+      </p>
+      <p :if={@submission.repeat_instruction} class="mt-2 text-sm leading-6 text-stone-700">
+        {@submission.repeat_instruction}
+      </p>
+      <p :if={@submission.repeat_due_date} class="mt-2 text-sm text-stone-700">
+        Revised deadline: {Calendar.strftime(@submission.repeat_due_date, "%d %b %Y")}
+      </p>
+      <div :if={@submission.tutor_audio_path && @audio_src} class="mt-3">
+        <p class="mb-1 text-sm font-semibold text-emerald-950">Tutor audio example</p>
+        <audio controls class="w-full" src={@audio_src}>
+          Your browser does not support audio playback.
+        </audio>
+      </div>
+    </section>
+    """
+  end
+
   attr :field, Phoenix.HTML.FormField, required: true
   attr :categories, :list, required: true
 

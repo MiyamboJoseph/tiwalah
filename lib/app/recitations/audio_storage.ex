@@ -33,7 +33,13 @@ defmodule App.Recitations.AudioStorage do
 
   def cleanup_orphaned_files do
     active_keys =
-      Repo.all(from(submission in Submission, select: submission.audio_path)) |> MapSet.new()
+      Repo.all(
+        from submission in Submission,
+          select: {submission.audio_path, submission.tutor_audio_path}
+      )
+      |> Enum.flat_map(fn {audio_path, tutor_audio_path} -> [audio_path, tutor_audio_path] end)
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
 
     with {:ok, files} <- File.ls(private_directory()) do
       Enum.each(files, fn file ->

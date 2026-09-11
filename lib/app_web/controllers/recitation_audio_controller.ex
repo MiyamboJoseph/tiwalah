@@ -16,6 +16,18 @@ defmodule AppWeb.RecitationAudioController do
     end
   end
 
+  def feedback(conn, %{"id" => id}) do
+    with {:ok, submission} <- Recitations.get_feedback_audio(conn.assigns.current_scope, id),
+         true <- AudioStorage.existing_file?(submission.tutor_audio_path) do
+      conn
+      |> put_resp_content_type(content_type(submission.tutor_audio_path))
+      |> put_resp_header("cache-control", "private, no-store")
+      |> send_file(200, AudioStorage.path_for(submission.tutor_audio_path))
+    else
+      _ -> send_resp(conn, 404, "Tutor audio not found")
+    end
+  end
+
   defp content_type(path) do
     case Path.extname(path) do
       ".mp3" -> "audio/mpeg"

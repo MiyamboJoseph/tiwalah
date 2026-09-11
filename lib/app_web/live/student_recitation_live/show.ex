@@ -96,6 +96,10 @@ defmodule AppWeb.StudentRecitationLive.Show do
                 label="Correction areas"
                 categories={submission.feedback_categories}
               />
+              <.repeat_guidance
+                submission={submission}
+                audio_src={~p"/recitations/feedback-audio/#{submission.id}"}
+              />
             </div>
           </article>
           <div

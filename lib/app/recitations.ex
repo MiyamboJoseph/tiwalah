@@ -293,10 +293,16 @@ defmodule App.Recitations do
 
     if submission do
       case Repo.transact(fn ->
-             with {:ok, reviewed} <- Repo.update(Submission.review_changeset(submission, attrs)),
+             with {:ok, reviewed} <-
+                    Repo.update(
+                      Submission.review_changeset(submission, attrs, submission.assignment)
+                    ),
                   {:ok, _assignment} <-
                     Repo.update(
-                      Ecto.Changeset.change(submission.assignment, status: reviewed.status)
+                      Ecto.Changeset.change(submission.assignment,
+                        status: reviewed.status,
+                        due_date: review_due_date(submission.assignment, reviewed)
+                      )
                     ) do
                {:ok, reviewed}
              else
@@ -337,6 +343,20 @@ defmodule App.Recitations do
     |> Ecto.Changeset.add_error(:audio_path, message)
   end
 
+  def get_feedback_audio(%Scope{user: %User{id: user_id, role: :student}}, id) do
+    get_feedback_audio_query(
+      id,
+      dynamic([submission, assignment], assignment.student_id == ^user_id)
+    )
+  end
+
+  def get_feedback_audio(%Scope{user: %User{id: user_id, role: :tutor}}, id) do
+    get_feedback_audio_query(
+      id,
+      dynamic([submission, assignment], assignment.tutor_id == ^user_id)
+    )
+  end
+
   defp get_submission_audio_query(id, ownership_filter) do
     case Ecto.Type.cast(:id, id) do
       {:ok, id} ->
@@ -355,6 +375,31 @@ defmodule App.Recitations do
         :error
     end
   end
+
+  defp get_feedback_audio_query(id, ownership_filter) do
+    case Ecto.Type.cast(:id, id) do
+      {:ok, id} ->
+        case Repo.one(
+               from submission in Submission,
+                 join: assignment in assoc(submission, :assignment),
+                 where: submission.id == ^id and not is_nil(submission.tutor_audio_path),
+                 where: ^ownership_filter,
+                 select: submission
+             ) do
+          nil -> :error
+          submission -> {:ok, submission}
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  defp review_due_date(assignment, %{status: :repeat_required, repeat_due_date: due_date}) do
+    due_date || assignment.due_date
+  end
+
+  defp review_due_date(assignment, _reviewed), do: assignment.due_date
 
   defp assignments_base_query(%Scope{user: %User{id: user_id, role: :student}}) do
     from assignment in Assignment, where: assignment.student_id == ^user_id

@@ -100,6 +100,11 @@ defmodule AppWeb.StudentRecitationLive.New do
           <p class="mt-2 text-stone-600 dark:text-stone-300">
             {@assignment.surah_name}, ayah {@assignment.ayah_from}–{@assignment.ayah_to}. Find a quiet place, begin with istiʿādhah and basmalah where appropriate, then record your best attempt.
           </p>
+          <.repeat_guidance
+            :if={@assignment.status == :repeat_required}
+            submission={latest_repeat_submission(@assignment)}
+            audio_src={~p"/recitations/feedback-audio/#{latest_repeat_submission(@assignment).id}"}
+          />
           <div class="mt-6">
             <.quran_passage
               passage={@quran_passage}
@@ -201,6 +206,12 @@ defmodule AppWeb.StudentRecitationLive.New do
       [{:error, _reason}] -> :storage_error
       _ -> :error
     end
+  end
+
+  defp latest_repeat_submission(assignment) do
+    assignment.submissions
+    |> Enum.filter(&(&1.status == :repeat_required))
+    |> Enum.max_by(& &1.inserted_at)
   end
 
   defp handle_upload_progress(:audio, _entry, socket), do: {:noreply, socket}

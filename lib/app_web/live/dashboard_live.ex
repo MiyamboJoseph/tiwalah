@@ -125,6 +125,11 @@ defmodule AppWeb.DashboardLive do
                 label="Correction areas"
                 categories={latest_feedback_categories(assignment)}
               />
+              <.repeat_guidance
+                :if={assignment.status == :repeat_required}
+                submission={latest_repeat_submission(assignment)}
+                audio_src={~p"/recitations/feedback-audio/#{latest_repeat_submission(assignment).id}"}
+              />
             </:detail>
             <:action>
               <%= if assignment.status in [:assigned, :repeat_required] do %>
@@ -132,7 +137,9 @@ defmodule AppWeb.DashboardLive do
                   navigate={~p"/recitations/new/#{assignment.id}"}
                   class="font-semibold text-emerald-800 hover:underline"
                 >
-                  Record recitation →
+                  {if assignment.status == :repeat_required,
+                    do: "Record revised recitation →",
+                    else: "Record recitation →"}
                 </.link>
               <% else %>
                 <.link
@@ -177,6 +184,12 @@ defmodule AppWeb.DashboardLive do
   end
 
   defp latest_feedback_categories(_assignment), do: []
+
+  defp latest_repeat_submission(assignment) do
+    assignment.submissions
+    |> Enum.filter(&(&1.status == :repeat_required))
+    |> Enum.max_by(& &1.inserted_at)
+  end
 
   defp tutor_name(tutor) do
     [tutor.first_name, tutor.last_name]

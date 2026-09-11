@@ -2,6 +2,7 @@ defmodule AppWeb.TutorLive.Review do
   use AppWeb, :live_view
 
   alias App.Recitations
+  alias App.Recitations.AudioStorage
   alias App.UmmahApi.Quran, as: UmmahQuran
 
   def mount(%{"assignment_id" => assignment_id}, _session, socket) do
@@ -23,9 +24,16 @@ defmodule AppWeb.TutorLive.Review do
            |> assign(
              assignment: assignment,
              forms: review_forms(assignment),
+             repeat_submission_ids: repeat_submission_ids(assignment),
              quran_passage: :loading,
              passage_page: 1,
              show_all_passage: false
+           )
+           |> allow_upload(:tutor_audio,
+             accept: ~w(.webm .mp3 .wav .m4a .ogg),
+             max_entries: 1,
+             max_file_size: 25_000_000,
+             auto_upload: true
            )
            |> load_passage(assignment)}
       end
@@ -43,44 +51,82 @@ defmodule AppWeb.TutorLive.Review do
         {:noreply, push_navigate(socket, to: ~p"/tutor")}
 
       assignment ->
-        {:noreply, assign(socket, assignment: assignment, forms: review_forms(assignment))}
+        {:noreply,
+         assign(socket,
+           assignment: assignment,
+           forms: review_forms(assignment),
+           repeat_submission_ids: repeat_submission_ids(assignment)
+         )}
     end
   end
 
   def handle_info({:quran_passage_loaded, result}, socket),
     do: {:noreply, assign(socket, quran_passage: result)}
 
-  def handle_event("paginate_passage", %{"page" => page}, socket) do
-    {:noreply, assign(socket, passage_page: page_number(page))}
-  end
+  def handle_event("paginate_passage", %{"page" => page}, socket),
+    do: {:noreply, assign(socket, passage_page: page_number(page))}
 
-  def handle_event("toggle_passage_view", _params, socket) do
-    {:noreply,
-     assign(socket,
-       show_all_passage: !socket.assigns.show_all_passage,
-       passage_page: 1
-     )}
+  def handle_event("toggle_passage_view", _params, socket),
+    do:
+      {:noreply,
+       assign(socket, show_all_passage: !socket.assigns.show_all_passage, passage_page: 1)}
+
+  def handle_event(
+        "set_review_decision",
+        %{"submission_id" => id, "review" => %{"status" => status}},
+        socket
+      ) do
+    submission_id = String.to_integer(id)
+
+    repeat_submission_ids =
+      if status == "repeat_required" do
+        MapSet.put(socket.assigns.repeat_submission_ids, submission_id)
+      else
+        MapSet.delete(socket.assigns.repeat_submission_ids, submission_id)
+      end
+
+    {:noreply, assign(socket, repeat_submission_ids: repeat_submission_ids)}
   end
 
   def handle_event("review", %{"submission_id" => id, "review" => params}, socket) do
-    case Recitations.review_submission(socket.assigns.current_scope, id, params) do
-      {:ok, _} ->
-        assignment =
-          Recitations.get_assignment!(socket.assigns.current_scope, socket.assigns.assignment.id)
+    with {:ok, params} <- attach_tutor_audio(socket, params),
+         {:ok, _} <- Recitations.review_submission(socket.assigns.current_scope, id, params) do
+      assignment =
+        Recitations.get_assignment!(socket.assigns.current_scope, socket.assigns.assignment.id)
 
+      {:noreply,
+       socket
+       |> assign(
+         assignment: assignment,
+         forms: review_forms(assignment),
+         repeat_submission_ids: repeat_submission_ids(assignment)
+       )
+       |> put_flash(:info, "Feedback sent to the student.")}
+    else
+      {:error, :tutor_audio} ->
         {:noreply,
-         socket
-         |> assign(assignment: assignment, forms: review_forms(assignment))
-         |> put_flash(:info, "Feedback sent to the student.")}
+         put_flash(socket, :error, "The tutor audio could not be saved. Please try again.")}
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "That submission is unavailable.")}
 
       {:error, changeset} ->
         {:noreply,
-         put_flash(socket, :error, "Could not save feedback: #{inspect(changeset.errors)}")}
+         socket
+         |> assign(
+           forms:
+             Map.put(
+               socket.assigns.forms,
+               String.to_integer(id),
+               to_form(changeset, as: "review")
+             )
+         )
+         |> put_flash(:error, "Please complete the required repeat guidance fields.")}
     end
   end
+
+  def handle_event("cancel-tutor-audio", %{"ref" => ref}, socket),
+    do: {:noreply, cancel_upload(socket, :tutor_audio, ref)}
 
   def render(assigns) do
     ~H"""
@@ -120,7 +166,7 @@ defmodule AppWeb.TutorLive.Review do
           :for={submission <- @assignment.submissions}
           class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200"
         >
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-4">
             <p class="font-semibold text-emerald-950 dark:text-emerald-100">
               Submitted {Calendar.strftime(submission.inserted_at, "%d %b, %H:%M")}
             </p>
@@ -136,25 +182,84 @@ defmodule AppWeb.TutorLive.Review do
             <.form
               for={@forms[submission.id]}
               id={"review-form-#{submission.id}"}
+              phx-change="set_review_decision"
               phx-submit="review"
-              class="mt-5 space-y-3"
+              class="mt-5 space-y-4"
             >
-              <input type="hidden" name="submission_id" value={submission.id} /><.input
+              <input type="hidden" name="submission_id" value={submission.id} />
+              <.input
                 field={@forms[submission.id][:status]}
                 type="select"
                 label="Decision"
                 options={[{"Approve recitation", "reviewed"}, {"Please repeat", "repeat_required"}]}
-              /><.input
+              />
+              <.input
                 field={@forms[submission.id][:feedback]}
                 type="textarea"
-                label="Feedback"
-                placeholder="Mention the ayah and the correction with gentleness and clarity."
+                label="Tutor guidance"
+                placeholder="Mention the ayah and correction with gentleness and clarity. Required for a repeat."
               />
+              <div
+                :if={submission.id in @repeat_submission_ids}
+                class="rounded-xl border border-amber-300 bg-amber-50 p-4"
+              >
+                <p class="font-semibold text-amber-950">Repeat guidance</p>
+                <p class="mt-1 text-sm text-stone-700">
+                  Complete these fields when requesting a repeat so the student knows exactly how to practise.
+                </p>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                  <.input
+                    field={@forms[submission.id][:repeat_ayah_from]}
+                    type="number"
+                    min="1"
+                    label="First ayah to repeat"
+                  /><.input
+                    field={@forms[submission.id][:repeat_ayah_to]}
+                    type="number"
+                    min="1"
+                    label="Last ayah to repeat"
+                  />
+                </div>
+                <.input
+                  field={@forms[submission.id][:repeat_instruction]}
+                  type="textarea"
+                  label="Practice instruction"
+                  placeholder="For example: Listen twice, repeat each ayah five times, then submit a new recording."
+                  class="mt-3 w-full textarea"
+                />
+                <.input
+                  field={@forms[submission.id][:repeat_due_date]}
+                  type="date"
+                  label="Revised deadline (optional)"
+                  class="mt-3 w-full input"
+                />
+                <div class="mt-3">
+                  <label class="block text-sm font-medium text-stone-700">
+                    Optional audio example
+                  </label>
+                  <.live_file_input upload={@uploads.tutor_audio} class="mt-2 block w-full text-sm" />
+                  <p class="mt-1 text-xs text-stone-500">WEBM, MP3, WAV, M4A, or OGG up to 25 MB.</p>
+                  <div
+                    :for={entry <- @uploads.tutor_audio.entries}
+                    class="mt-2 flex items-center justify-between text-sm"
+                  >
+                    <span>{entry.client_name} — {entry.progress}%</span><button
+                      type="button"
+                      phx-click="cancel-tutor-audio"
+                      phx-value-ref={entry.ref}
+                      class="text-rose-700"
+                    >Remove</button>
+                  </div>
+                </div>
+              </div>
               <.correction_area_selector
                 field={@forms[submission.id][:feedback_categories]}
                 categories={Recitations.feedback_categories()}
               />
-              <.button class="bg-emerald-800 text-white hover:bg-emerald-900">
+              <.button
+                class="bg-emerald-800 text-white hover:bg-emerald-900"
+                disabled={Enum.any?(@uploads.tutor_audio.entries, &(not &1.done?))}
+              >
                 Send feedback
               </.button>
             </.form>
@@ -169,6 +274,10 @@ defmodule AppWeb.TutorLive.Review do
               label="Correction areas"
               categories={submission.feedback_categories}
             />
+            <.repeat_guidance
+              submission={submission}
+              audio_src={~p"/recitations/feedback-audio/#{submission.id}"}
+            />
           <% end %>
         </article>
       </section>
@@ -176,19 +285,47 @@ defmodule AppWeb.TutorLive.Review do
     """
   end
 
-  defp review_forms(assignment),
-    do:
-      Map.new(assignment.submissions, fn submission ->
-        {submission.id,
-         to_form(
-           %{
-             "status" => Atom.to_string(submission.status),
-             "feedback" => submission.feedback || "",
-             "feedback_categories" => submission.feedback_categories || []
-           },
-           as: "review"
-         )}
-      end)
+  defp attach_tutor_audio(socket, params) do
+    case consume_uploaded_entries(socket, :tutor_audio, fn %{path: path}, entry ->
+           case AudioStorage.store(path, entry.client_name) do
+             {:ok, storage_key} -> {:ok, storage_key}
+             {:error, _reason} -> {:ok, :storage_error}
+           end
+         end) do
+      [] ->
+        {:ok, params}
+
+      [audio_path] when is_binary(audio_path) ->
+        {:ok, Map.put(params, "tutor_audio_path", audio_path)}
+
+      _ ->
+        {:error, :tutor_audio}
+    end
+  end
+
+  defp review_forms(assignment) do
+    Map.new(assignment.submissions, fn submission ->
+      {submission.id,
+       to_form(
+         %{
+           "status" => Atom.to_string(submission.status),
+           "feedback" => submission.feedback || "",
+           "feedback_categories" => submission.feedback_categories || [],
+           "repeat_ayah_from" => submission.repeat_ayah_from,
+           "repeat_ayah_to" => submission.repeat_ayah_to,
+           "repeat_instruction" => submission.repeat_instruction || "",
+           "repeat_due_date" => submission.repeat_due_date
+         },
+         as: "review"
+       )}
+    end)
+  end
+
+  defp repeat_submission_ids(assignment) do
+    assignment.submissions
+    |> Enum.filter(&(&1.status == :repeat_required))
+    |> MapSet.new(& &1.id)
+  end
 
   defp load_passage(socket, assignment) do
     if connected?(socket) do
