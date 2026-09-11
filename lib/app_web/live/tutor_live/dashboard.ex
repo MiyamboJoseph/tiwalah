@@ -60,7 +60,11 @@ defmodule AppWeb.TutorLive.Dashboard do
 
       {:error, :student_not_found} ->
         {:noreply,
-         put_flash(socket, :error, "No student account was found for that email address.")}
+         put_flash(
+           socket,
+           :info,
+           "If that student has a Tilawah account, they will receive your connection request."
+         )}
 
       _ ->
         {:noreply, put_flash(socket, :error, "The tutor request could not be created.")}

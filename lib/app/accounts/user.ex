@@ -11,6 +11,14 @@ defmodule App.Accounts.User do
     field :location, :string
     field :phone_number, :string
     field :time_zone, :string, default: "Africa/Lusaka"
+    field :terms_accepted_at, :utc_datetime
+    field :terms_accepted, :boolean, virtual: true, default: false
+    field :tutor_qualification, :string
+    field :tutor_experience_years, :integer
+    field :tutor_languages, :string
+    field :tutor_teaching_format, :string
+    field :tutor_availability, :string
+    field :tutor_bio, :string
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
@@ -39,7 +47,23 @@ defmodule App.Accounts.User do
   @doc "A changeset for a new account, including the chosen portal role."
   def registration_changeset(user, attrs, opts \\ []) do
     user
-    |> cast(attrs, [:email, :role, :first_name, :last_name, :gender, :location, :phone_number])
+    |> cast(attrs, [
+      :email,
+      :role,
+      :first_name,
+      :last_name,
+      :gender,
+      :location,
+      :phone_number,
+      :time_zone,
+      :terms_accepted,
+      :tutor_qualification,
+      :tutor_experience_years,
+      :tutor_languages,
+      :tutor_teaching_format,
+      :tutor_availability,
+      :tutor_bio
+    ])
     |> validate_email(opts)
     |> validate_required([:role, :first_name, :last_name, :gender, :location, :phone_number])
     |> validate_inclusion(:gender, ["female", "male", "prefer_not_to_say"])
@@ -49,6 +73,41 @@ defmodule App.Accounts.User do
     |> validate_format(:phone_number, ~r/^\+?[0-9()\-\s]{7,20}$/,
       message: "must be a valid phone number"
     )
+    |> validate_required([:time_zone])
+    |> validate_acceptance(:terms_accepted, message: "must be accepted to create an account")
+    |> validate_tutor_profile()
+    |> record_terms_acceptance()
+  end
+
+  defp validate_tutor_profile(changeset) do
+    if get_field(changeset, :role) == :tutor do
+      changeset
+      |> validate_required([
+        :tutor_qualification,
+        :tutor_languages,
+        :tutor_teaching_format,
+        :tutor_availability
+      ])
+      |> validate_inclusion(:tutor_teaching_format, ["online", "in_person", "both"])
+      |> validate_number(:tutor_experience_years,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 80
+      )
+      |> validate_length(:tutor_qualification, max: 240)
+      |> validate_length(:tutor_languages, max: 240)
+      |> validate_length(:tutor_availability, max: 500)
+      |> validate_length(:tutor_bio, max: 2_000)
+    else
+      changeset
+    end
+  end
+
+  defp record_terms_acceptance(changeset) do
+    if get_field(changeset, :terms_accepted) do
+      put_change(changeset, :terms_accepted_at, DateTime.utc_now(:second))
+    else
+      changeset
+    end
   end
 
   defp validate_email(changeset, opts) do
@@ -103,7 +162,7 @@ defmodule App.Accounts.User do
   defp validate_password(changeset, opts) do
     changeset
     |> validate_required([:password])
-    |> validate_length(:password, min: 12, max: 72)
+    |> validate_length(:password, min: 8, max: 72)
     # Examples of additional password validation:
     # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
     # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")

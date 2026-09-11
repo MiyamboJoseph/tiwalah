@@ -21,6 +21,13 @@ defmodule App.AccountsFixtures do
       gender: "female",
       location: "Lusaka, Zambia",
       phone_number: "+260971234567",
+      time_zone: "Africa/Lusaka",
+      terms_accepted: true,
+      tutor_qualification: "Qur'an teaching background",
+      tutor_experience_years: 1,
+      tutor_languages: "English",
+      tutor_teaching_format: "online",
+      tutor_availability: "Weekdays",
       password: valid_user_password(),
       password_confirmation: valid_user_password()
     })

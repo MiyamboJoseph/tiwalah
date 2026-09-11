@@ -343,7 +343,8 @@ defmodule App.Recitations do
         case Repo.one(
                from submission in Submission,
                  join: assignment in assoc(submission, :assignment),
-                 where: submission.id == ^id and ^ownership_filter,
+                 where: submission.id == ^id,
+                 where: ^ownership_filter,
                  select: submission
              ) do
           nil -> :error

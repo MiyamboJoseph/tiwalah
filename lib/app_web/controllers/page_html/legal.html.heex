@@ -1,0 +1,18 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <article class="mx-auto max-w-3xl rounded-3xl bg-white p-7 shadow-sm dark:bg-base-200 sm:p-10">
+    <.link navigate={~p"/"} class="text-sm font-semibold text-emerald-800 hover:underline">
+      ← Tilawah home
+    </.link>
+    <h1 class="mt-5 font-serif text-4xl font-bold text-emerald-950 dark:text-emerald-100">
+      {@title}
+    </h1>
+    <div class="mt-8 space-y-7">
+      <section :for={{heading, body} <- @sections}>
+        <h2 class="font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
+          {heading}
+        </h2>
+        <p class="mt-2 leading-7 text-stone-700 dark:text-stone-300">{body}</p>
+      </section>
+    </div>
+  </article>
+</Layouts.app>

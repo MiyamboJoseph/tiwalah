@@ -65,13 +65,38 @@ defmodule AppWeb.DashboardLive do
             :for={request <- @tutor_requests}
             class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm"
           >
-            <span class="font-semibold text-emerald-950">{tutor_name(request.tutor)}</span>
+            <div>
+              <p class="font-semibold text-emerald-950">{tutor_name(request.tutor)}</p>
+              <p :if={request.tutor.tutor_qualification} class="mt-1 text-sm leading-6 text-stone-700">
+                {request.tutor.tutor_qualification}
+              </p>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+                <span
+                  :if={request.tutor.tutor_languages}
+                  class="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-900"
+                >
+                  {request.tutor.tutor_languages}
+                </span>
+                <span
+                  :if={request.tutor.tutor_teaching_format}
+                  class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900"
+                >
+                  {teaching_format(request.tutor.tutor_teaching_format)}
+                </span>
+              </div>
+              <p :if={request.tutor.tutor_availability} class="mt-2 text-xs text-stone-600">
+                Availability: {request.tutor.tutor_availability}
+              </p>
+              <p :if={request.tutor.tutor_bio} class="mt-2 text-sm leading-6 text-stone-600">
+                {request.tutor.tutor_bio}
+              </p>
+            </div>
             <button
               id={"accept-tutor-#{request.id}"}
               type="button"
               phx-click="accept_tutor_request"
               phx-value-id={request.id}
-              class="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+              class="shrink-0 rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
             >
               Accept tutor
             </button>
@@ -162,6 +187,11 @@ defmodule AppWeb.DashboardLive do
       name -> name
     end
   end
+
+  defp teaching_format("in_person"), do: "In person"
+  defp teaching_format("online"), do: "Online"
+  defp teaching_format("both"), do: "Online & in person"
+  defp teaching_format(_format), do: "Teaching format not stated"
 
   defp load_dashboard(socket, page \\ nil) do
     page = page || Map.get(socket.assigns, :page, 1)
