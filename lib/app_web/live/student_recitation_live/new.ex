@@ -69,6 +69,10 @@ defmodule AppWeb.StudentRecitationLive.New do
     {:noreply, assign(socket, form: to_form(params, as: "submission"))}
   end
 
+  # Kept as a compatibility handler for a browser that still has a previously
+  # compiled recorder hook loaded. Recorder diagnostics are client-side only.
+  def handle_event("recording_debug", _params, socket), do: {:noreply, socket}
+
   def handle_event("cancel-upload", %{"ref" => ref}, socket),
     do: {:noreply, cancel_upload(socket, :audio, ref)}
 

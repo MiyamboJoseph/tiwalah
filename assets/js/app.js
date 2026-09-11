@@ -34,7 +34,6 @@ const AudioRecorder = {
     let chunks = []
     const report = (stage, details = {}) => {
       console.info("[Tilawah recorder]", stage, details)
-      this.pushEvent("recording_debug", {stage, ...details})
     }
 
     const extensionFor = (mimeType) => {

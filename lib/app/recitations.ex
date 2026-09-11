@@ -233,7 +233,7 @@ defmodule App.Recitations do
                    |> Repo.insert(),
                  {:ok, _assignment} <-
                    Repo.update(Ecto.Changeset.change(assignment, status: :submitted)) do
-              {submission, assignment}
+              {:ok, {submission, assignment}}
             else
               {:error, changeset} -> Repo.rollback(changeset)
             end
