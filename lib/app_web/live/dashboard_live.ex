@@ -24,6 +24,16 @@ defmodule AppWeb.DashboardLive do
     {:noreply, load_dashboard(socket, page)}
   end
 
+  def handle_event("accept_tutor_request", %{"id" => id}, socket) do
+    case Recitations.accept_tutor_request(socket.assigns.current_scope, id) do
+      {:ok, _connection} ->
+        {:noreply, socket |> put_flash(:info, "Tutor request accepted.") |> load_dashboard()}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That tutor request is no longer available.")}
+    end
+  end
+
   def render(assigns) do
     pending = assigns.assignment_counts.assigned + assigns.assignment_counts.repeat_required
     reviewed = assigns.assignment_counts.reviewed
@@ -44,6 +54,29 @@ defmodule AppWeb.DashboardLive do
         <.metric title="Assigned portions" value={@assignment_counts.total} icon="hero-book-open" />
         <.metric title="Ready to record" value={@pending} icon="hero-microphone" />
         <.metric title="Approved" value={@reviewed} icon="hero-check-badge" />
+      </section>
+      <section :if={@tutor_requests != []} class="rounded-2xl border border-amber-300 bg-amber-50 p-5">
+        <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-800">Tutor requests</p>
+        <p class="mt-1 text-sm text-stone-700">
+          Choose which teacher may assign and review your recitation.
+        </p>
+        <div class="mt-4 space-y-3">
+          <div
+            :for={request <- @tutor_requests}
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm"
+          >
+            <span class="font-semibold text-emerald-950">{tutor_name(request.tutor)}</span>
+            <button
+              id={"accept-tutor-#{request.id}"}
+              type="button"
+              phx-click="accept_tutor_request"
+              phx-value-id={request.id}
+              class="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+            >
+              Accept tutor
+            </button>
+          </div>
+        </div>
       </section>
       <section>
         <div class="mb-5 flex items-end justify-between">
@@ -110,7 +143,8 @@ defmodule AppWeb.DashboardLive do
   defp latest_feedback_categories(%{status: status, submissions: submissions})
        when status in [:reviewed, :repeat_required] do
     submissions
-    |> Enum.find(&(&1.status == status))
+    |> Enum.filter(&(&1.status == status))
+    |> Enum.max_by(& &1.inserted_at, fn -> nil end)
     |> case do
       nil -> []
       submission -> submission.feedback_categories || []
@@ -118,6 +152,16 @@ defmodule AppWeb.DashboardLive do
   end
 
   defp latest_feedback_categories(_assignment), do: []
+
+  defp tutor_name(tutor) do
+    [tutor.first_name, tutor.last_name]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+    |> case do
+      "" -> tutor.email
+      name -> name
+    end
+  end
 
   defp load_dashboard(socket, page \\ nil) do
     page = page || Map.get(socket.assigns, :page, 1)
@@ -127,7 +171,8 @@ defmodule AppWeb.DashboardLive do
       assignments: assignment_page.entries,
       assignment_counts: Recitations.assignment_counts(socket.assigns.current_scope),
       page: assignment_page.page,
-      total_pages: assignment_page.total_pages
+      total_pages: assignment_page.total_pages,
+      tutor_requests: Recitations.list_pending_tutor_requests(socket.assigns.current_scope)
     )
   end
 end

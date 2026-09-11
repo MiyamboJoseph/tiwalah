@@ -10,6 +10,8 @@ defmodule App.Application do
     children = [
       AppWeb.Telemetry,
       App.Repo,
+      App.AuthRateLimiter,
+      App.UmmahApi.PassageCache,
       {Oban, Application.fetch_env!(:app, Oban)},
       {DNSCluster, query: Application.get_env(:app, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: App.PubSub},

@@ -47,6 +47,26 @@ defmodule AppWeb.TutorLive.Dashboard do
     end
   end
 
+  def handle_event("request_student", %{"connection" => %{"email" => email}}, socket) do
+    case Recitations.request_student_connection(socket.assigns.current_scope, email) do
+      {:ok, _connection} ->
+        {:noreply,
+         socket
+         |> assign(connection_form: to_form(%{"email" => ""}, as: "connection"))
+         |> put_flash(
+           :info,
+           "Tutor request sent. The student must accept before you can assign a portion."
+         )}
+
+      {:error, :student_not_found} ->
+        {:noreply,
+         put_flash(socket, :error, "No student account was found for that email address.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "The tutor request could not be created.")}
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -100,6 +120,31 @@ defmodule AppWeb.TutorLive.Dashboard do
           />
         </div>
         <aside class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200">
+          <.form
+            for={@connection_form}
+            id="student-connection-form"
+            phx-submit="request_student"
+            class="mb-6 border-b border-emerald-900/10 pb-6"
+          >
+            <h2 class="font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
+              Invite a student
+            </h2>
+            <p class="mt-1 text-sm text-stone-600 dark:text-stone-300">
+              Send a private connection request using the student’s registered email.
+            </p>
+            <div class="mt-4 flex flex-col gap-3 sm:flex-row lg:flex-col">
+              <.input
+                field={@connection_form[:email]}
+                type="email"
+                label="Student email"
+                placeholder="student@example.com"
+                required
+              />
+              <.button class="bg-emerald-800 text-white hover:bg-emerald-900">
+                Request connection
+              </.button>
+            </div>
+          </.form>
           <h2 class="font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
             Assign a portion
           </h2>
@@ -165,7 +210,8 @@ defmodule AppWeb.TutorLive.Dashboard do
       page: assignment_page.page,
       total_pages: assignment_page.total_pages,
       students: Recitations.list_students(scope),
-      form: to_form(changeset, as: "assignment")
+      form: to_form(changeset, as: "assignment"),
+      connection_form: to_form(%{"email" => ""}, as: "connection")
     )
   end
 

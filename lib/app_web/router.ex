@@ -62,6 +62,7 @@ defmodule AppWeb.Router do
     end
 
     post "/users/update-password", UserSessionController, :update_password
+    get "/recitations/audio/:id", RecitationAudioController, :show
   end
 
   scope "/", AppWeb do

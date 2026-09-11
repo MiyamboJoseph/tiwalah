@@ -3,19 +3,13 @@ defmodule App.UmmahApi.Quran do
 
   alias App.Quran
   alias App.Recitations.Assignment
+  alias App.UmmahApi.PassageCache
 
   @request_timeout 8_000
 
   def assigned_passage(%Assignment{} = assignment) do
     with {:ok, surah_number} <- Quran.surah_number(assignment.surah_name),
-         {:ok, response} <-
-           Req.get(
-             url: surah_url(surah_number),
-             params: [script: "uthmani", translation: "sahih_international"],
-             receive_timeout: @request_timeout
-           ),
-         true <- response.status in 200..299,
-         verses when is_list(verses) <- extract_verses(response.body),
+         {:ok, verses} <- fetch_surah(surah_number),
          selected when selected != [] <-
            select_range(verses, assignment.ayah_from, assignment.ayah_to) do
       {:ok,
@@ -31,6 +25,23 @@ defmodule App.UmmahApi.Quran do
   defp surah_url(surah_number) do
     base_url = Application.fetch_env!(:app, :ummah_api) |> Keyword.fetch!(:base_url)
     "#{String.trim_trailing(base_url, "/")}/api/quran/surah/#{surah_number}"
+  end
+
+  defp fetch_surah(surah_number) do
+    PassageCache.fetch(surah_number, fn ->
+      with {:ok, response} <-
+             Req.get(
+               url: surah_url(surah_number),
+               params: [script: "uthmani", translation: "sahih_international"],
+               receive_timeout: @request_timeout
+             ),
+           true <- response.status in 200..299,
+           verses when is_list(verses) and verses != [] <- extract_verses(response.body) do
+        {:ok, verses}
+      else
+        _ -> {:error, :unavailable}
+      end
+    end)
   end
 
   defp extract_verses(%{"data" => data}), do: extract_verses(data)

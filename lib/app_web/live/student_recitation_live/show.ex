@@ -78,7 +78,7 @@ defmodule AppWeb.StudentRecitationLive.Show do
               </p>
               <.status_badge status={submission.status} />
             </div>
-            <audio controls class="mt-4 w-full" src={submission.audio_path}>
+            <audio controls class="mt-4 w-full" src={~p"/recitations/audio/#{submission.id}"}>
               Your browser does not support audio playback.
             </audio>
             <p :if={submission.note} class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-stone-700">

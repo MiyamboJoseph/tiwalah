@@ -22,6 +22,7 @@ defmodule App.Recitations.Submission do
     submission
     |> cast(attrs, [:audio_path, :note])
     |> validate_required([:audio_path])
+    |> check_constraint(:status, name: :submission_status_is_valid)
   end
 
   def review_changeset(submission, attrs) do
@@ -30,5 +31,6 @@ defmodule App.Recitations.Submission do
     |> validate_required([:status])
     |> validate_inclusion(:status, [:reviewed, :repeat_required])
     |> validate_subset(:feedback_categories, App.Recitations.feedback_categories())
+    |> check_constraint(:status, name: :submission_status_is_valid)
   end
 end

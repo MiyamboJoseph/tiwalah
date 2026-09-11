@@ -10,6 +10,7 @@ defmodule App.Accounts.User do
     field :gender, :string
     field :location, :string
     field :phone_number, :string
+    field :time_zone, :string, default: "Africa/Lusaka"
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime

@@ -4,7 +4,7 @@ defmodule App.Recitations do
   import Ecto.Query
   alias App.Accounts.{Scope, User}
   alias App.Notifications
-  alias App.Recitations.{Assignment, Submission}
+  alias App.Recitations.{Assignment, Submission, TutorStudentConnection}
   alias App.Repo
 
   @feedback_categories [
@@ -22,8 +22,69 @@ defmodule App.Recitations do
   def subscribe_student(student_id),
     do: Phoenix.PubSub.subscribe(App.PubSub, student_topic(student_id))
 
-  def list_students(%Scope{user: %User{role: :tutor}}) do
-    Repo.all(from user in User, where: user.role == :student, order_by: user.email)
+  def list_students(%Scope{user: %User{role: :tutor}} = scope) do
+    Repo.all(
+      from connection in TutorStudentConnection,
+        join: student in assoc(connection, :student),
+        where: connection.tutor_id == ^scope.user.id and connection.status == :active,
+        order_by: student.email,
+        select: student
+    )
+  end
+
+  def list_pending_tutor_requests(%Scope{user: %User{id: student_id, role: :student}}) do
+    Repo.all(
+      from connection in TutorStudentConnection,
+        join: tutor in assoc(connection, :tutor),
+        where: connection.student_id == ^student_id and connection.status == :pending,
+        order_by: [desc: connection.inserted_at],
+        preload: [tutor: tutor]
+    )
+  end
+
+  def request_student_connection(%Scope{user: %User{id: tutor_id, role: :tutor}}, email) do
+    case Repo.get_by(User, email: String.trim(email), role: :student) do
+      nil ->
+        {:error, :student_not_found}
+
+      %User{id: student_id} ->
+        %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
+        |> TutorStudentConnection.changeset(%{status: :pending})
+        |> Repo.insert(on_conflict: :nothing, conflict_target: [:tutor_id, :student_id])
+        |> case do
+          {:ok, connection} ->
+            broadcast_student(student_id, {:recitation_changed, :tutor_request, connection.id})
+            {:ok, connection}
+
+          error ->
+            error
+        end
+    end
+  end
+
+  def accept_tutor_request(%Scope{user: %User{id: student_id, role: :student}}, connection_id) do
+    case Repo.get_by(TutorStudentConnection,
+           id: connection_id,
+           student_id: student_id,
+           status: :pending
+         ) do
+      nil ->
+        {:error, :not_found}
+
+      connection ->
+        case Repo.update(TutorStudentConnection.changeset(connection, %{status: :active})) do
+          {:ok, active_connection} ->
+            broadcast_tutor(
+              active_connection.tutor_id,
+              {:recitation_changed, :student_connected, nil}
+            )
+
+            {:ok, active_connection}
+
+          error ->
+            error
+        end
+    end
   end
 
   def list_assignments(scope) do
@@ -118,7 +179,12 @@ defmodule App.Recitations do
 
   def create_assignment(%Scope{user: %User{id: tutor_id, role: :tutor}}, student_id, attrs) do
     with {:ok, student_id} <- Ecto.Type.cast(:id, student_id),
-         %User{} <- Repo.get_by(User, id: student_id, role: :student) do
+         %TutorStudentConnection{status: :active} <-
+           Repo.get_by(TutorStudentConnection,
+             tutor_id: tutor_id,
+             student_id: student_id,
+             status: :active
+           ) do
       case %Assignment{tutor_id: tutor_id, student_id: student_id}
            |> Assignment.changeset(attrs)
            |> Repo.insert() do
@@ -149,25 +215,69 @@ defmodule App.Recitations do
         assignment_id,
         attrs
       ) do
-    case get_assignment(scope, assignment_id) do
-      %Assignment{status: status} = assignment when status in [:assigned, :repeat_required] ->
-        %Submission{assignment_id: assignment.id, student_id: student_id}
-        |> Submission.submission_changeset(attrs)
-        |> Repo.insert()
-        |> update_assignment_after_submission(assignment)
+    result =
+      Repo.transact(fn ->
+        assignment =
+          Repo.one(
+            from assignment in Assignment,
+              where: assignment.id == ^assignment_id and assignment.student_id == ^student_id,
+              lock: "FOR UPDATE",
+              preload: [:tutor]
+          )
 
-      %Assignment{} ->
-        {:error,
-         %Submission{}
-         |> Submission.submission_changeset(attrs)
-         |> Ecto.Changeset.add_error(:audio_path, "this portion is already awaiting review")}
+        case assignment do
+          %Assignment{status: status} when status in [:assigned, :repeat_required] ->
+            with {:ok, submission} <-
+                   %Submission{assignment_id: assignment.id, student_id: student_id}
+                   |> Submission.submission_changeset(attrs)
+                   |> Repo.insert(),
+                 {:ok, _assignment} <-
+                   Repo.update(Ecto.Changeset.change(assignment, status: :submitted)) do
+              {submission, assignment}
+            else
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
 
-      nil ->
-        {:error,
-         %Submission{}
-         |> Submission.submission_changeset(attrs)
-         |> Ecto.Changeset.add_error(:audio_path, "assignment was not found")}
+          %Assignment{} ->
+            Repo.rollback(submission_error(attrs, "this portion is already awaiting review"))
+
+          nil ->
+            Repo.rollback(submission_error(attrs, "assignment was not found"))
+        end
+      end)
+
+    case result do
+      {:ok, {submission, assignment}} ->
+        Notifications.notify_submission(
+          assignment.tutor.email,
+          scope.user.email,
+          assignment.title
+        )
+
+        broadcast_tutor(
+          assignment.tutor_id,
+          {:recitation_changed, :submission_received, assignment.id}
+        )
+
+        {:ok, submission}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
+  end
+
+  def get_submission_audio(%Scope{user: %User{id: user_id, role: :student}}, id) do
+    get_submission_audio_query(
+      id,
+      dynamic([submission, assignment], assignment.student_id == ^user_id)
+    )
+  end
+
+  def get_submission_audio(%Scope{user: %User{id: user_id, role: :tutor}}, id) do
+    get_submission_audio_query(
+      id,
+      dynamic([submission, assignment], assignment.tutor_id == ^user_id)
+    )
   end
 
   def review_submission(%Scope{user: %User{role: :tutor}} = scope, submission_id, attrs) do
@@ -221,26 +331,29 @@ defmodule App.Recitations do
     end
   end
 
-  defp update_assignment_after_submission({:ok, submission}, assignment) do
-    Repo.update(Ecto.Changeset.change(assignment, status: :submitted))
-
-    Notifications.notify_submission(
-      assignment.tutor.email,
-      get_user!(submission.student_id).email,
-      assignment.title
-    )
-
-    broadcast_tutor(
-      assignment.tutor_id,
-      {:recitation_changed, :submission_received, assignment.id}
-    )
-
-    {:ok, submission}
+  defp submission_error(attrs, message) do
+    %Submission{}
+    |> Submission.submission_changeset(attrs)
+    |> Ecto.Changeset.add_error(:audio_path, message)
   end
 
-  defp update_assignment_after_submission(error, _assignment), do: error
+  defp get_submission_audio_query(id, ownership_filter) do
+    case Ecto.Type.cast(:id, id) do
+      {:ok, id} ->
+        case Repo.one(
+               from submission in Submission,
+                 join: assignment in assoc(submission, :assignment),
+                 where: submission.id == ^id and ^ownership_filter,
+                 select: submission
+             ) do
+          nil -> :error
+          submission -> {:ok, submission}
+        end
 
-  defp get_user!(id), do: Repo.get!(User, id)
+      :error ->
+        :error
+    end
+  end
 
   defp assignments_base_query(%Scope{user: %User{id: user_id, role: :student}}) do
     from assignment in Assignment, where: assignment.student_id == ^user_id

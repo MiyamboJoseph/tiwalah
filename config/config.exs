@@ -97,8 +97,14 @@ end
 
 config :app, Oban,
   repo: App.Repo,
-  queues: [mailers: 10],
-  plugins: [{Oban.Plugins.Cron, crontab: [{"0 7 * * *", App.Workers.DailyPracticeReminder}]}]
+  queues: [mailers: 10, maintenance: 2],
+  plugins: [
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"0 7 * * *", App.Workers.DailyPracticeReminder},
+       {"30 2 * * *", App.Workers.AudioCleanupWorker}
+     ]}
+  ]
 
 # Configure esbuild (the version is required)
 config :esbuild,

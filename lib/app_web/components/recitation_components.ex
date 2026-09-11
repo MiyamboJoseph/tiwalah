@@ -158,7 +158,7 @@ defmodule AppWeb.RecitationComponents do
             :if={@allow_show_all && @total_pages > 1}
             type="button"
             phx-click={@on_show_all}
-            class="hidden rounded-lg border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-900 transition hover:bg-emerald-100 sm:block"
+            class="rounded-lg border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-900 transition hover:bg-emerald-100"
           >
             {if @show_all, do: "Use pages", else: "Show all"}
           </button>

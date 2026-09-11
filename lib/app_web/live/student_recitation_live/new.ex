@@ -1,9 +1,8 @@
 defmodule AppWeb.StudentRecitationLive.New do
   use AppWeb, :live_view
 
-  require Logger
-
   alias App.Recitations
+  alias App.Recitations.AudioStorage
   alias App.UmmahApi.Quran, as: UmmahQuran
 
   def mount(%{"assignment_id" => assignment_id}, _session, socket) do
@@ -72,18 +71,6 @@ defmodule AppWeb.StudentRecitationLive.New do
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket),
     do: {:noreply, cancel_upload(socket, :audio, ref)}
-
-  def handle_event("recording_debug", params, socket) do
-    Logger.debug("Tilawah recorder: #{params["stage"]}",
-      file_name: params["file_name"],
-      file_type: params["file_type"],
-      bytes: params["bytes"],
-      chunk_count: params["chunk_count"],
-      message: params["message"]
-    )
-
-    {:noreply, socket}
-  end
 
   def handle_event("paginate_passage", %{"page" => page}, socket) do
     {:noreply, assign(socket, passage_page: page_number(page))}
@@ -201,14 +188,8 @@ defmodule AppWeb.StudentRecitationLive.New do
 
   defp uploaded_audio(socket) do
     case consume_uploaded_entries(socket, :audio, fn %{path: path}, entry ->
-           extension = entry.client_name |> Path.extname() |> String.downcase()
-           file_name = "#{System.unique_integer([:positive])}#{extension}"
-           uploads_dir = Path.join([:code.priv_dir(:app), "static", "uploads"])
-           destination = Path.join(uploads_dir, file_name)
-
-           with :ok <- File.mkdir_p(uploads_dir), :ok <- File.cp(path, destination) do
-             {:ok, "/uploads/#{file_name}"}
-           else
+           case AudioStorage.store(path, entry.client_name) do
+             {:ok, storage_key} -> {:ok, storage_key}
              {:error, reason} -> {:ok, {:error, reason}}
            end
          end) do
@@ -218,16 +199,7 @@ defmodule AppWeb.StudentRecitationLive.New do
     end
   end
 
-  defp handle_upload_progress(:audio, entry, socket) do
-    Logger.debug("Tilawah audio upload progress",
-      client_name: entry.client_name,
-      client_type: entry.client_type,
-      progress: entry.progress,
-      done: entry.done?
-    )
-
-    {:noreply, socket}
-  end
+  defp handle_upload_progress(:audio, _entry, socket), do: {:noreply, socket}
 
   defp upload_error_message(:too_large), do: "The recording must be 25 MB or smaller."
   defp upload_error_message(:not_accepted), do: "Use WEBM, MP3, WAV, M4A, or OGG audio."

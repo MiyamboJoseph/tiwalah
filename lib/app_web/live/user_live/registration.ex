@@ -242,6 +242,19 @@ defmodule AppWeb.UserLive.Registration do
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
+    if App.AuthRateLimiter.allowed?(:registration, user_params["email"]) do
+      register_user(socket, user_params)
+    else
+      {:noreply, put_flash(socket, :error, "Too many account requests. Please try again later.")}
+    end
+  end
+
+  def handle_event("validate", %{"user" => user_params}, socket) do
+    changeset = Accounts.change_user_registration(%User{}, user_params, validate_unique: false)
+    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+  end
+
+  defp register_user(socket, user_params) do
     case Accounts.register_user(user_params) do
       {:ok, _user} ->
         {:noreply,
@@ -255,11 +268,6 @@ defmodule AppWeb.UserLive.Registration do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
     end
-  end
-
-  def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset = Accounts.change_user_registration(%User{}, user_params, validate_unique: false)
-    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
