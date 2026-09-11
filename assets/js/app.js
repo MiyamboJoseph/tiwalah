@@ -28,13 +28,15 @@ import topbar from "../vendor/topbar"
 const AudioRecorder = {
   mounted() {
     const recordButton = this.el.querySelector("[data-record]")
+    const pauseButton = this.el.querySelector("[data-pause]")
     const stopButton = this.el.querySelector("[data-stop]")
     const status = this.el.querySelector("[data-status]")
     const timer = this.el.querySelector("[data-recording-timer]")
     let recorder
     let chunks = []
     let timerInterval
-    let recordingStartedAt
+    let timerStartedAt
+    let elapsedMilliseconds = 0
     const report = (stage, details = {}) => {
       console.info("[Tilawah recorder]", stage, details)
     }
@@ -58,23 +60,34 @@ const AudioRecorder = {
     }
 
     const updateTimer = () => {
-      if (timer && recordingStartedAt) {
-        timer.textContent = formatDuration(Date.now() - recordingStartedAt)
+      if (timer) {
+        const activeMilliseconds = timerStartedAt ? Date.now() - timerStartedAt : 0
+        timer.textContent = formatDuration(elapsedMilliseconds + activeMilliseconds)
       }
     }
 
     const startTimer = () => {
-      recordingStartedAt = Date.now()
+      elapsedMilliseconds = 0
+      timerStartedAt = Date.now()
       updateTimer()
       timerInterval = window.setInterval(updateTimer, 250)
       this.timerInterval = timerInterval
     }
 
-    const stopTimer = () => {
+    const pauseTimer = () => {
+      if (timerStartedAt) elapsedMilliseconds += Date.now() - timerStartedAt
       window.clearInterval(timerInterval)
       timerInterval = undefined
       this.timerInterval = undefined
+      timerStartedAt = undefined
       updateTimer()
+    }
+
+    const resumeTimer = () => {
+      timerStartedAt = Date.now()
+      updateTimer()
+      timerInterval = window.setInterval(updateTimer, 250)
+      this.timerInterval = timerInterval
     }
 
     recordButton.addEventListener("click", async () => {
@@ -129,7 +142,9 @@ const AudioRecorder = {
             )
             report("upload_event_dispatched")
             this.stream.getTracks().forEach(track => track.stop())
-            stopTimer()
+            pauseTimer()
+            pauseButton.disabled = true
+            pauseButton.textContent = "Pause recording"
             status.textContent = "Recording attached. Uploading now…"
           } catch (error) {
             console.error("[Tilawah recorder] upload preparation failed", error)
@@ -140,6 +155,8 @@ const AudioRecorder = {
         recorder.start()
         startTimer()
         recordButton.disabled = true
+        pauseButton.disabled = false
+        pauseButton.textContent = "Pause recording"
         stopButton.disabled = false
         status.textContent = "Recording in progress…"
       } catch (error) {
@@ -149,13 +166,31 @@ const AudioRecorder = {
       }
     })
 
+    pauseButton.addEventListener("click", () => {
+      if (!recorder) return
+
+      if (recorder.state === "recording") {
+        recorder.pause()
+        pauseTimer()
+        pauseButton.textContent = "Resume recording"
+        status.textContent = "Recording paused. Resume when you are ready."
+      } else if (recorder.state === "paused") {
+        recorder.resume()
+        resumeTimer()
+        pauseButton.textContent = "Pause recording"
+        status.textContent = "Recording in progress…"
+      }
+    })
+
     stopButton.addEventListener("click", () => {
       if (recorder && recorder.state !== "inactive") {
         report("stop_requested", {state: recorder.state})
         recorder.stop()
       }
-      stopTimer()
+      pauseTimer()
       recordButton.disabled = false
+      pauseButton.disabled = true
+      pauseButton.textContent = "Pause recording"
       stopButton.disabled = true
     })
 

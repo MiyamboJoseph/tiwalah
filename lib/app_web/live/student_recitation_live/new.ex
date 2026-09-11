@@ -137,6 +137,14 @@ defmodule AppWeb.StudentRecitationLive.New do
                 </button>
                 <button
                   type="button"
+                  data-pause
+                  disabled
+                  class="rounded-lg border border-amber-600 px-4 py-2 text-sm font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Pause recording
+                </button>
+                <button
+                  type="button"
                   data-stop
                   disabled
                   class="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900 disabled:opacity-50 dark:text-emerald-100"

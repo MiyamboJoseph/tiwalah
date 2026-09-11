@@ -3,6 +3,7 @@ defmodule AppWeb.TutorLive.Review do
 
   alias App.Recitations
   alias App.Recitations.AudioStorage
+  alias App.Recitations.Submission
   alias App.UmmahApi.Quran, as: UmmahQuran
 
   def mount(%{"assignment_id" => assignment_id}, _session, socket) do
@@ -73,7 +74,7 @@ defmodule AppWeb.TutorLive.Review do
 
   def handle_event(
         "set_review_decision",
-        %{"submission_id" => id, "review" => %{"status" => status}},
+        %{"submission_id" => id, "review" => %{"status" => status} = params},
         socket
       ) do
     submission_id = String.to_integer(id)
@@ -85,7 +86,21 @@ defmodule AppWeb.TutorLive.Review do
         MapSet.delete(socket.assigns.repeat_submission_ids, submission_id)
       end
 
-    {:noreply, assign(socket, repeat_submission_ids: repeat_submission_ids)}
+    submission = Enum.find(socket.assigns.assignment.submissions, &(&1.id == submission_id))
+
+    forms =
+      if submission do
+        changeset =
+          submission
+          |> Submission.review_changeset(params, socket.assigns.assignment)
+          |> Map.put(:action, :validate)
+
+        Map.put(socket.assigns.forms, submission_id, to_form(changeset, as: "review"))
+      else
+        socket.assigns.forms
+      end
+
+    {:noreply, assign(socket, repeat_submission_ids: repeat_submission_ids, forms: forms)}
   end
 
   def handle_event("review", %{"submission_id" => id, "review" => params}, socket) do
@@ -248,6 +263,14 @@ defmodule AppWeb.TutorLive.Review do
                       class="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
                     >
                       Record example
+                    </button>
+                    <button
+                      type="button"
+                      data-pause
+                      disabled
+                      class="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Pause recording
                     </button>
                     <button
                       type="button"
