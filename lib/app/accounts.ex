@@ -6,7 +6,7 @@ defmodule App.Accounts do
   import Ecto.Query, warn: false
   alias App.Repo
 
-  alias App.Accounts.{User, UserToken, UserNotifier}
+  alias App.Accounts.{Scope, User, UserToken, UserNotifier}
 
   ## Database getters
 
@@ -23,7 +23,7 @@ defmodule App.Accounts do
 
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.get_by(User, email: email)
+    Repo.get_by(User, email: normalize_email(email))
   end
 
   @doc """
@@ -40,7 +40,7 @@ defmodule App.Accounts do
   """
   def get_user_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
-    user = Repo.get_by(User, email: email)
+    user = Repo.get_by(User, email: normalize_email(email))
     if User.valid_password?(user, password), do: user
   end
 
@@ -99,6 +99,35 @@ defmodule App.Accounts do
     |> Ecto.Changeset.change(changes)
     |> Repo.update()
   end
+
+  @doc "Lists tutor profiles for a trusted administrator to review."
+  def list_tutors_for_verification(%Scope{user: %User{role: :admin}}) do
+    Repo.all(
+      from user in User,
+        where: user.role == :tutor,
+        order_by: [asc: user.tutor_verification_status, desc: user.inserted_at]
+    )
+  end
+
+  @doc "Records an administrator's decision about a tutor profile."
+  def review_tutor(%Scope{user: %User{id: admin_id, role: :admin}}, tutor_id, status)
+      when status in [:verified, :rejected] do
+    case Repo.get_by(User, id: tutor_id, role: :tutor) do
+      nil ->
+        {:error, :not_found}
+
+      tutor ->
+        changes = %{
+          tutor_verification_status: status,
+          tutor_verified_at: if(status == :verified, do: DateTime.utc_now(:second), else: nil),
+          tutor_verified_by_id: admin_id
+        }
+
+        Repo.update(Ecto.Changeset.change(tutor, changes))
+    end
+  end
+
+  defp normalize_email(email), do: email |> String.trim() |> String.downcase()
 
   ## Settings
 

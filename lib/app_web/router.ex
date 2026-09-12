@@ -65,6 +65,11 @@ defmodule AppWeb.Router do
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
 
+    live_session :require_admin,
+      on_mount: [{AppWeb.UserAuth, :require_authenticated}, {AppWeb.UserAuth, :require_admin}] do
+      live "/admin/tutors", AdminLive.TutorVerifications, :index
+    end
+
     post "/users/update-password", UserSessionController, :update_password
     get "/recitations/audio/:id", RecitationAudioController, :show
     get "/recitations/feedback-audio/:id", RecitationAudioController, :feedback

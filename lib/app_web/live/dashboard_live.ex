@@ -13,6 +13,9 @@ defmodule AppWeb.DashboardLive do
 
       :tutor ->
         {:ok, push_navigate(socket, to: ~p"/tutor")}
+
+      :admin ->
+        {:ok, push_navigate(socket, to: ~p"/admin/tutors")}
     end
   end
 
@@ -22,6 +25,10 @@ defmodule AppWeb.DashboardLive do
 
   def handle_event("paginate_assignments", %{"page" => page}, socket) do
     {:noreply, load_dashboard(socket, page)}
+  end
+
+  def handle_event("request_tutor", %{"tutor_request" => %{"tutor_id" => tutor_id}}, socket) do
+    send_tutor_request(tutor_id, socket)
   end
 
   def handle_event("accept_tutor_request", %{"id" => id}, socket) do
@@ -54,6 +61,45 @@ defmodule AppWeb.DashboardLive do
     end
   end
 
+  defp send_tutor_request(tutor_id, socket) do
+    case Recitations.request_tutor_connection(socket.assigns.current_scope, tutor_id) do
+      {:ok, _connection} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Learning request sent. The tutor will review it before connecting.")
+         |> load_dashboard()}
+
+      {:error, :tutor_not_found} ->
+        {:noreply, put_flash(socket, :error, "Select a verified tutor to continue.")}
+
+      {:error, :already_requested} ->
+        {:noreply,
+         put_flash(socket, :info, "Your request is already awaiting this tutor’s response.")}
+
+      {:error, :tutor_invited} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "This tutor has already invited you. Review the invitation below."
+         )}
+
+      {:error, :tutor_unavailable} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "This tutor is not currently available to accept learning requests."
+         )}
+
+      {:error, :already_connected} ->
+        {:noreply, put_flash(socket, :info, "You are already connected with this tutor.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Your learning request could not be sent.")}
+    end
+  end
+
   def render(assigns) do
     pending = assigns.assignment_counts.assigned + assigns.assignment_counts.repeat_required
     reviewed = assigns.assignment_counts.reviewed
@@ -74,6 +120,49 @@ defmodule AppWeb.DashboardLive do
         <.metric title="Active portions" value={@assignment_counts.active} icon="hero-book-open" />
         <.metric title="Ready to record" value={@pending} icon="hero-microphone" />
         <.metric title="Approved" value={@reviewed} icon="hero-check-badge" />
+      </section>
+      <section class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Find a teacher</p>
+            <h2 class="mt-1 font-serif text-2xl font-bold text-emerald-950 dark:text-emerald-100">
+              Request Qur’an guidance
+            </h2>
+            <p class="mt-1 text-sm text-stone-600 dark:text-stone-300">
+              Choose a tutor and send a learning request. They must accept before any portion is assigned.
+            </p>
+          </div>
+          <.form for={@tutor_request_form} phx-submit="request_tutor" class="w-full sm:max-w-md">
+            <.input
+              field={@tutor_request_form[:tutor_id]}
+              type="select"
+              label="Choose a verified Qur’an teacher"
+              prompt="Select a tutor"
+              options={Enum.map(@tutor_directory, &{tutor_option(&1), &1.id})}
+              required
+            />
+            <.button
+              disabled={@tutor_directory == []}
+              class="mt-3 w-full bg-emerald-800 text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Request to learn
+            </.button>
+          </.form>
+        </div>
+        <p :if={@tutor_directory == []} class="mt-4 text-sm text-stone-600 dark:text-stone-300">
+          No verified tutors are available yet. Please check again soon.
+        </p>
+      </section>
+      <section :if={@requested_tutors != []} class="rounded-2xl border border-sky-200 bg-sky-50 p-5">
+        <p class="text-sm font-bold uppercase tracking-[0.16em] text-sky-800">
+          Requests awaiting a tutor
+        </p>
+        <div class="mt-3 flex flex-wrap gap-3">
+          <div :for={request <- @requested_tutors} class="rounded-xl bg-white px-4 py-3 shadow-sm">
+            <p class="font-semibold text-emerald-950">{tutor_name(request.tutor)}</p>
+            <p class="mt-1 text-sm text-stone-600">Awaiting their response.</p>
+          </div>
+        </div>
       </section>
       <section class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200">
         <div class="flex flex-wrap items-end justify-between gap-3">
@@ -107,7 +196,7 @@ defmodule AppWeb.DashboardLive do
         />
       </section>
       <section :if={@tutor_requests != []} class="rounded-2xl border border-amber-300 bg-amber-50 p-5">
-        <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-800">Tutor requests</p>
+        <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-800">Tutor invitations</p>
         <p class="mt-1 text-sm text-stone-700">
           Choose which teacher may assign and review your recitation.
         </p>
@@ -286,6 +375,20 @@ defmodule AppWeb.DashboardLive do
     end
   end
 
+  defp tutor_option(tutor) do
+    details =
+      [
+        tutor.tutor_languages,
+        tutor.tutor_teaching_format && teaching_format(tutor.tutor_teaching_format)
+      ]
+      |> Enum.reject(&(&1 in [nil, ""]))
+
+    case details do
+      [] -> tutor_name(tutor)
+      _ -> "#{tutor_name(tutor)} · #{Enum.join(details, " · ")}"
+    end
+  end
+
   defp teaching_format("in_person"), do: "In person"
   defp teaching_format("online"), do: "Online"
   defp teaching_format("both"), do: "Online & in person"
@@ -306,6 +409,9 @@ defmodule AppWeb.DashboardLive do
       page: assignment_page.page,
       total_pages: assignment_page.total_pages,
       tutor_requests: Recitations.list_pending_tutor_requests(socket.assigns.current_scope),
+      requested_tutors: Recitations.list_pending_requested_tutors(socket.assigns.current_scope),
+      tutor_directory: Recitations.list_tutor_directory(socket.assigns.current_scope),
+      tutor_request_form: to_form(%{"tutor_id" => ""}, as: "tutor_request"),
       active_tutors: Recitations.list_active_tutors(socket.assigns.current_scope),
       progress: Recitations.student_progress(socket.assigns.current_scope)
     )

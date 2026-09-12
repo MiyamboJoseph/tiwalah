@@ -27,6 +27,37 @@ defmodule AppWeb.TutorLive.Dashboard do
     {:noreply, load_dashboard(socket, page)}
   end
 
+  def handle_event("accept_student_request", %{"id" => id}, socket) do
+    case Recitations.accept_student_request(socket.assigns.current_scope, id) do
+      {:ok, _connection} ->
+        {:noreply, socket |> put_flash(:info, "Student request accepted.") |> load_dashboard()}
+
+      {:error, :tutor_capacity_reached} ->
+        {:noreply, put_flash(socket, :info, "Your student capacity has been reached.")}
+
+      {:error, :tutor_unavailable} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Your tutor profile must be verified before accepting requests."
+         )}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That student request is no longer available.")}
+    end
+  end
+
+  def handle_event("decline_student_request", %{"id" => id}, socket) do
+    case Recitations.decline_student_request(socket.assigns.current_scope, id) do
+      {:ok, _connection} ->
+        {:noreply, socket |> put_flash(:info, "Student request declined.") |> load_dashboard()}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That student request is no longer available.")}
+    end
+  end
+
   def handle_event("validate", %{"assignment" => params}, socket) do
     changeset = Assignment.changeset(%Assignment{}, params) |> Map.put(:action, :validate)
 
@@ -118,6 +149,14 @@ defmodule AppWeb.TutorLive.Dashboard do
       {:error, :already_connected} ->
         {:noreply, put_flash(socket, :info, "That student is already in your recitation circle.")}
 
+      {:error, :tutor_unavailable} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Your tutor profile must be verified before you can invite students."
+         )}
+
       _ ->
         {:noreply, put_flash(socket, :error, "The tutor request could not be created.")}
     end
@@ -154,6 +193,51 @@ defmodule AppWeb.TutorLive.Dashboard do
           value={@assignment_counts.submitted}
           icon="hero-headphones"
         /><.metric title="Students" value={length(@students)} icon="hero-user-group" />
+      </section>
+      <section
+        :if={@student_requests != []}
+        class="rounded-2xl border border-amber-300 bg-amber-50 p-5"
+      >
+        <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-800">
+          Student learning requests
+        </p>
+        <p class="mt-1 text-sm text-stone-700">
+          Review each request before adding a student to your recitation circle.
+        </p>
+        <div class="mt-4 space-y-3">
+          <article
+            :for={request <- @student_requests}
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm"
+          >
+            <div class="min-w-0">
+              <p class="font-semibold text-emerald-950">{student_label(request.student)}</p>
+              <p :if={request.student.location} class="mt-1 text-sm text-stone-600">
+                {request.student.location}
+              </p>
+              <p :if={request.student.phone_number} class="mt-1 text-sm text-stone-600">
+                {request.student.phone_number}
+              </p>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                phx-click="accept_student_request"
+                phx-value-id={request.id}
+                class="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+              >
+                Accept student
+              </button>
+              <button
+                type="button"
+                phx-click="decline_student_request"
+                phx-value-id={request.id}
+                class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50"
+              >
+                Decline
+              </button>
+            </div>
+          </article>
+        </div>
       </section>
       <section :if={@students != []} class="rounded-2xl bg-white p-5 shadow-sm dark:bg-base-200">
         <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your students</p>
@@ -214,31 +298,34 @@ defmodule AppWeb.TutorLive.Dashboard do
           />
         </div>
         <aside class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200">
-          <.form
-            for={@connection_form}
-            id="student-connection-form"
-            phx-submit="request_student"
-            class="mb-6 border-b border-emerald-900/10 pb-6"
-          >
-            <h2 class="font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
-              Invite a student
-            </h2>
-            <p class="mt-1 text-sm text-stone-600 dark:text-stone-300">
-              Send a private connection request using the student’s registered email.
+          <details class="mb-6 border-b border-emerald-900/10 pb-6">
+            <summary class="cursor-pointer font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
+              Invite an existing student
+              <span class="font-sans text-sm font-normal text-stone-500">(optional)</span>
+            </summary>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-300">
+              Students normally request to learn with you. Use this only for an existing class or a student you already know.
             </p>
-            <div class="mt-4 flex flex-col gap-3 sm:flex-row lg:flex-col">
-              <.input
-                field={@connection_form[:email]}
-                type="email"
-                label="Student email"
-                placeholder="student@example.com"
-                required
-              />
-              <.button class="bg-emerald-800 text-white hover:bg-emerald-900">
-                Request connection
-              </.button>
-            </div>
-          </.form>
+            <.form
+              for={@connection_form}
+              id="student-connection-form"
+              phx-submit="request_student"
+              class="mt-4"
+            >
+              <div class="mt-4 flex flex-col gap-3 sm:flex-row lg:flex-col">
+                <.input
+                  field={@connection_form[:email]}
+                  type="email"
+                  label="Student email"
+                  placeholder="student@example.com"
+                  required
+                />
+                <.button class="bg-emerald-800 text-white hover:bg-emerald-900">
+                  Request connection
+                </.button>
+              </div>
+            </.form>
+          </details>
           <h2 class="font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
             Assign a portion
           </h2>
@@ -344,6 +431,7 @@ defmodule AppWeb.TutorLive.Dashboard do
       total_pages: assignment_page.total_pages,
       students: Recitations.list_students(scope),
       connections: Recitations.list_active_connections(scope),
+      student_requests: Recitations.list_pending_student_requests(scope),
       form: to_form(changeset, as: "assignment"),
       template_due_in_days: nil,
       connection_form: to_form(%{"email" => ""}, as: "connection"),

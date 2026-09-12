@@ -67,10 +67,10 @@ defmodule AppWeb.Layouts do
               </span>
             </.link>
             <.link
-              navigate={~p"/dashboard"}
+              navigate={portal_path(@current_scope.user)}
               class="text-xs font-semibold text-emerald-800 sm:text-sm"
             >
-              <span class="sm:hidden">Portal</span><span class="hidden sm:inline">My portal</span>
+              <span class="sm:hidden">Portal</span><span class="hidden sm:inline">{portal_label(@current_scope.user)}</span>
             </.link>
             <.link
               href={~p"/users/log-out"}
@@ -186,4 +186,10 @@ defmodule AppWeb.Layouts do
     </div>
     """
   end
+
+  defp portal_path(%{role: :admin}), do: ~p"/admin/tutors"
+  defp portal_path(_user), do: ~p"/dashboard"
+
+  defp portal_label(%{role: :admin}), do: "Admin"
+  defp portal_label(_user), do: "My portal"
 end

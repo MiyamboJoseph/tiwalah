@@ -128,14 +128,59 @@ defmodule App.Recitations do
     Repo.all(
       from connection in TutorStudentConnection,
         join: tutor in assoc(connection, :tutor),
-        where: connection.student_id == ^student_id and connection.status == :pending,
+        where:
+          connection.student_id == ^student_id and connection.status == :pending and
+            connection.requested_by == :tutor,
         order_by: [desc: connection.inserted_at],
         preload: [tutor: tutor]
     )
   end
 
+  def list_pending_requested_tutors(%Scope{user: %User{id: student_id, role: :student}}) do
+    Repo.all(
+      from connection in TutorStudentConnection,
+        join: tutor in assoc(connection, :tutor),
+        where:
+          connection.student_id == ^student_id and connection.status == :pending and
+            connection.requested_by == :student,
+        order_by: [desc: connection.inserted_at],
+        preload: [tutor: tutor]
+    )
+  end
+
+  def list_tutor_directory(%Scope{user: %User{id: student_id, role: :student}}) do
+    Repo.all(
+      from tutor in User,
+        left_join: connection in TutorStudentConnection,
+        on: connection.tutor_id == tutor.id and connection.student_id == ^student_id,
+        where:
+          tutor.role == :tutor and tutor.tutor_verification_status == :verified and
+            is_nil(connection.id),
+        order_by: [asc: tutor.first_name, asc: tutor.last_name, asc: tutor.email],
+        limit: 30
+    )
+  end
+
+  def list_pending_student_requests(%Scope{user: %User{id: tutor_id, role: :tutor}}) do
+    Repo.all(
+      from connection in TutorStudentConnection,
+        join: student in assoc(connection, :student),
+        where:
+          connection.tutor_id == ^tutor_id and connection.status == :pending and
+            connection.requested_by == :student,
+        order_by: [desc: connection.inserted_at],
+        preload: [student: student]
+    )
+  end
+
   def request_student_connection(%Scope{user: %User{id: tutor_id, role: :tutor}}, email) do
-    case Repo.get_by(User, email: String.trim(email), role: :student) do
+    with :ok <- ensure_tutor_available(tutor_id) do
+      request_student_connection_for_tutor(tutor_id, email)
+    end
+  end
+
+  defp request_student_connection_for_tutor(tutor_id, email) do
+    case find_user_by_email_and_role(email, :student) do
       nil ->
         {:error, :student_not_found}
 
@@ -149,7 +194,7 @@ defmodule App.Recitations do
 
           nil ->
             %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
-            |> TutorStudentConnection.changeset(%{status: :pending})
+            |> TutorStudentConnection.changeset(%{status: :pending, requested_by: :tutor})
             |> Repo.insert()
             |> case do
               {:ok, connection} ->
@@ -167,9 +212,79 @@ defmodule App.Recitations do
 
                 {:ok, connection}
 
-              error ->
-                error
+              {:error, changeset} ->
+                connection_insert_error(changeset)
             end
+        end
+    end
+  end
+
+  def request_tutor_connection(%Scope{user: %User{id: student_id, role: :student}}, tutor_id)
+      when is_integer(tutor_id) do
+    request_tutor_connection_for_student_id(tutor_id, student_id)
+  end
+
+  def request_tutor_connection(%Scope{user: %User{id: student_id, role: :student}}, tutor_id)
+      when is_binary(tutor_id) do
+    case Integer.parse(tutor_id) do
+      {id, ""} -> request_tutor_connection_for_student_id(id, student_id)
+      _ -> request_tutor_connection_for_student_email(tutor_id, student_id)
+    end
+  end
+
+  defp request_tutor_connection_for_student_id(tutor_id, student_id) do
+    case Repo.get(User, tutor_id) do
+      %User{role: :tutor, tutor_verification_status: :verified} ->
+        request_tutor_connection_for_student(tutor_id, student_id)
+
+      _ ->
+        {:error, :tutor_not_found}
+    end
+  end
+
+  defp request_tutor_connection_for_student_email(email, student_id) do
+    case find_user_by_email_and_role(email, :tutor) do
+      nil ->
+        {:error, :tutor_not_found}
+
+      %User{id: tutor_id, tutor_verification_status: :verified} ->
+        request_tutor_connection_for_student(tutor_id, student_id)
+
+      %User{} ->
+        {:error, :tutor_unavailable}
+    end
+  end
+
+  defp request_tutor_connection_for_student(tutor_id, student_id) do
+    case Repo.get_by(TutorStudentConnection, tutor_id: tutor_id, student_id: student_id) do
+      %TutorStudentConnection{status: :active} ->
+        {:error, :already_connected}
+
+      %TutorStudentConnection{status: :pending, requested_by: :student} ->
+        {:error, :already_requested}
+
+      %TutorStudentConnection{status: :pending, requested_by: :tutor} ->
+        {:error, :tutor_invited}
+
+      nil ->
+        %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
+        |> TutorStudentConnection.changeset(%{status: :pending, requested_by: :student})
+        |> Repo.insert()
+        |> case do
+          {:ok, connection} ->
+            broadcast_tutor(tutor_id, {:recitation_changed, :student_request, connection.id})
+
+            Notifications.create(tutor_id, %{
+              kind: "student_request",
+              title: "New student learning request",
+              body: "A student would like to join your recitation circle.",
+              path: "/tutor"
+            })
+
+            {:ok, connection}
+
+          {:error, changeset} ->
+            connection_insert_error(changeset)
         end
     end
   end
@@ -178,30 +293,35 @@ defmodule App.Recitations do
     case Repo.get_by(TutorStudentConnection,
            id: connection_id,
            student_id: student_id,
-           status: :pending
+           status: :pending,
+           requested_by: :tutor
          ) do
       nil ->
         {:error, :not_found}
 
       connection ->
-        case Repo.update(TutorStudentConnection.changeset(connection, %{status: :active})) do
-          {:ok, active_connection} ->
-            broadcast_tutor(
-              active_connection.tutor_id,
-              {:recitation_changed, :student_connected, nil}
-            )
+        if tutor_available?(connection.tutor_id) do
+          case Repo.update(TutorStudentConnection.changeset(connection, %{status: :active})) do
+            {:ok, active_connection} ->
+              broadcast_tutor(
+                active_connection.tutor_id,
+                {:recitation_changed, :student_connected, nil}
+              )
 
-            Notifications.create(active_connection.tutor_id, %{
-              kind: "student_connected",
-              title: "Student connection accepted",
-              body: "You can now assign portions to this student.",
-              path: "/tutor"
-            })
+              Notifications.create(active_connection.tutor_id, %{
+                kind: "student_connected",
+                title: "Student connection accepted",
+                body: "You can now assign portions to this student.",
+                path: "/tutor"
+              })
 
-            {:ok, active_connection}
+              {:ok, active_connection}
 
-          error ->
-            error
+            error ->
+              error
+          end
+        else
+          {:error, :tutor_unavailable}
         end
     end
   end
@@ -210,10 +330,101 @@ defmodule App.Recitations do
     case Repo.get_by(TutorStudentConnection,
            id: connection_id,
            student_id: student_id,
-           status: :pending
+           status: :pending,
+           requested_by: :tutor
          ) do
-      nil -> {:error, :not_found}
-      connection -> Repo.delete(connection)
+      nil ->
+        {:error, :not_found}
+
+      connection ->
+        case Repo.delete(connection) do
+          {:ok, deleted_connection} ->
+            broadcast_tutor(
+              deleted_connection.tutor_id,
+              {:recitation_changed, :tutor_request_declined, nil}
+            )
+
+            Notifications.create(deleted_connection.tutor_id, %{
+              kind: "tutor_request_declined",
+              title: "Tutor invitation declined",
+              body: "The student declined your invitation to join their recitation circle.",
+              path: "/tutor"
+            })
+
+            {:ok, deleted_connection}
+
+          error ->
+            error
+        end
+    end
+  end
+
+  def accept_student_request(%Scope{user: %User{id: tutor_id, role: :tutor}}, connection_id) do
+    case Repo.get_by(TutorStudentConnection,
+           id: connection_id,
+           tutor_id: tutor_id,
+           status: :pending,
+           requested_by: :student
+         ) do
+      nil ->
+        {:error, :not_found}
+
+      connection ->
+        with :ok <- ensure_tutor_available(tutor_id),
+             :ok <- ensure_tutor_capacity(tutor_id) do
+          case Repo.update(TutorStudentConnection.changeset(connection, %{status: :active})) do
+            {:ok, active_connection} ->
+              broadcast_student(
+                active_connection.student_id,
+                {:recitation_changed, :tutor_connected, nil}
+              )
+
+              Notifications.create(active_connection.student_id, %{
+                kind: "tutor_request_accepted",
+                title: "Your tutor request was accepted",
+                body: "Your teacher can now assign recitation portions and send guidance.",
+                path: "/dashboard"
+              })
+
+              {:ok, active_connection}
+
+            error ->
+              error
+          end
+        end
+    end
+  end
+
+  def decline_student_request(%Scope{user: %User{id: tutor_id, role: :tutor}}, connection_id) do
+    case Repo.get_by(TutorStudentConnection,
+           id: connection_id,
+           tutor_id: tutor_id,
+           status: :pending,
+           requested_by: :student
+         ) do
+      nil ->
+        {:error, :not_found}
+
+      connection ->
+        case Repo.delete(connection) do
+          {:ok, deleted_connection} ->
+            broadcast_student(
+              deleted_connection.student_id,
+              {:recitation_changed, :tutor_request_declined, nil}
+            )
+
+            Notifications.create(deleted_connection.student_id, %{
+              kind: "tutor_request_declined",
+              title: "Tutor request declined",
+              body: "This teacher is unable to take on your request at this time.",
+              path: "/dashboard"
+            })
+
+            {:ok, deleted_connection}
+
+          error ->
+            error
+        end
     end
   end
 
@@ -621,6 +832,40 @@ defmodule App.Recitations do
   end
 
   defp normalize_page(_page), do: 1
+
+  defp find_user_by_email_and_role(email, role) do
+    Repo.get_by(User, email: email |> String.trim() |> String.downcase(), role: role)
+  end
+
+  defp tutor_available?(tutor_id) do
+    match?(%User{role: :tutor, tutor_verification_status: :verified}, Repo.get(User, tutor_id))
+  end
+
+  defp ensure_tutor_available(tutor_id) do
+    if tutor_available?(tutor_id), do: :ok, else: {:error, :tutor_unavailable}
+  end
+
+  defp ensure_tutor_capacity(tutor_id) do
+    tutor = Repo.get(User, tutor_id)
+
+    active_students =
+      Repo.aggregate(
+        from(connection in TutorStudentConnection,
+          where: connection.tutor_id == ^tutor_id and connection.status == :active
+        ),
+        :count
+      )
+
+    if active_students < tutor.tutor_student_limit,
+      do: :ok,
+      else: {:error, :tutor_capacity_reached}
+  end
+
+  defp connection_insert_error(changeset) do
+    if Keyword.has_key?(changeset.errors, :student_id),
+      do: {:error, :already_requested},
+      else: {:error, changeset}
+  end
 
   defp broadcast_tutor(tutor_id, message),
     do: Phoenix.PubSub.broadcast(App.PubSub, tutor_topic(tutor_id), message)

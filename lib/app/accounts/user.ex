@@ -4,7 +4,7 @@ defmodule App.Accounts.User do
 
   schema "users" do
     field :email, :string
-    field :role, Ecto.Enum, values: [:student, :tutor], default: :student
+    field :role, Ecto.Enum, values: [:student, :tutor, :admin], default: :student
     field :first_name, :string
     field :last_name, :string
     field :gender, :string
@@ -18,6 +18,7 @@ defmodule App.Accounts.User do
     field :tutor_languages, :string
     field :tutor_teaching_format, :string
     field :tutor_availability, :string
+    field :tutor_student_limit, :integer, default: 20
     field :tutor_bio, :string
 
     field :tutor_verification_status, Ecto.Enum,
@@ -25,6 +26,7 @@ defmodule App.Accounts.User do
       default: :not_applicable
 
     field :tutor_verified_at, :utc_datetime
+    belongs_to :tutor_verifier, __MODULE__, foreign_key: :tutor_verified_by_id
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
@@ -68,10 +70,12 @@ defmodule App.Accounts.User do
       :tutor_languages,
       :tutor_teaching_format,
       :tutor_availability,
+      :tutor_student_limit,
       :tutor_bio
     ])
     |> validate_email(opts)
     |> validate_required([:role, :first_name, :last_name, :gender, :location, :phone_number])
+    |> validate_inclusion(:role, [:student, :tutor])
     |> validate_inclusion(:gender, ["female", "male", "prefer_not_to_say"])
     |> validate_length(:first_name, min: 2, max: 80)
     |> validate_length(:last_name, min: 2, max: 80)
@@ -104,6 +108,10 @@ defmodule App.Accounts.User do
       |> validate_length(:tutor_languages, max: 240)
       |> validate_length(:tutor_availability, max: 500)
       |> validate_length(:tutor_bio, max: 2_000)
+      |> validate_number(:tutor_student_limit,
+        greater_than_or_equal_to: 1,
+        less_than_or_equal_to: 500
+      )
     else
       changeset
     end
@@ -128,6 +136,7 @@ defmodule App.Accounts.User do
   defp validate_email(changeset, opts) do
     changeset =
       changeset
+      |> update_change(:email, &(&1 |> String.trim() |> String.downcase()))
       |> validate_required([:email])
       |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
         message: "must have the @ sign and no spaces"

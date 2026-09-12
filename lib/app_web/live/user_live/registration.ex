@@ -190,6 +190,16 @@ defmodule AppWeb.UserLive.Registration do
                     />
                   </div>
                   <.input
+                    field={@form[:tutor_student_limit]}
+                    type="number"
+                    min="1"
+                    max="500"
+                    label="Maximum students in your circle"
+                  />
+                  <p class="-mt-2 text-xs text-stone-500">
+                    You can accept requests until this limit is reached.
+                  </p>
+                  <.input
                     field={@form[:tutor_languages]}
                     type="text"
                     label="Teaching languages"
@@ -459,7 +469,13 @@ defmodule AppWeb.UserLive.Registration do
   defp step_fields(1, _role), do: [:role, :first_name, :last_name, :gender]
 
   defp step_fields(2, "tutor") do
-    [:tutor_qualification, :tutor_teaching_format, :tutor_languages, :tutor_availability]
+    [
+      :tutor_qualification,
+      :tutor_teaching_format,
+      :tutor_languages,
+      :tutor_availability,
+      :tutor_student_limit
+    ]
   end
 
   defp step_fields(2, _role), do: [:location, :phone_number, :time_zone]

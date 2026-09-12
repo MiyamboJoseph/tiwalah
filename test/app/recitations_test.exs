@@ -3,11 +3,12 @@ defmodule App.RecitationsTest do
 
   alias App.Recitations
   alias App.Recitations.AssignmentTemplate
+  alias App.{Accounts, Repo}
 
   import App.AccountsFixtures
 
   test "a tutor can assign only after the student accepts a connection request" do
-    tutor = user_fixture(%{role: :tutor, email: unique_user_email()})
+    tutor = verified_tutor()
     student = user_fixture(%{role: :student, email: unique_user_email()})
     tutor_scope = user_scope_fixture(tutor)
     student_scope = user_scope_fixture(student)
@@ -41,7 +42,7 @@ defmodule App.RecitationsTest do
   end
 
   test "a student can decline a request or end an accepted tutor connection" do
-    tutor = user_fixture(%{role: :tutor, email: unique_user_email()})
+    tutor = verified_tutor()
     student = user_fixture(%{role: :student, email: unique_user_email()})
     tutor_scope = user_scope_fixture(tutor)
     student_scope = user_scope_fixture(student)
@@ -72,6 +73,64 @@ defmodule App.RecitationsTest do
 
     refute changeset.valid?
     assert "does not match the first selected ayah" in errors_on(changeset).juz_number
+  end
+
+  test "a student can request a verified tutor by selected tutor id" do
+    tutor = verified_tutor(%{email: "Teacher@Example.com"})
+    student = user_fixture(%{role: :student, email: unique_user_email()})
+    tutor_scope = user_scope_fixture(tutor)
+    student_scope = user_scope_fixture(student)
+
+    assert {:ok, request} = Recitations.request_tutor_connection(student_scope, tutor.id)
+
+    assert [pending] = Recitations.list_pending_student_requests(tutor_scope)
+    assert pending.id == request.id
+    assert {:ok, _connection} = Recitations.accept_student_request(tutor_scope, request.id)
+
+    assert {:ok, _assignment} =
+             Recitations.create_assignment(tutor_scope, student.id, assignment_attrs())
+  end
+
+  test "the tutor directory exposes only verified tutors without an existing connection" do
+    verified = verified_tutor(%{email: unique_user_email()})
+    _unverified = user_fixture(%{role: :tutor, email: unique_user_email()})
+    student = user_fixture(%{role: :student, email: unique_user_email()})
+
+    assert [%{id: tutor_id}] = Recitations.list_tutor_directory(user_scope_fixture(student))
+    assert tutor_id == verified.id
+  end
+
+  test "a tutor cannot accept beyond their student capacity" do
+    tutor = verified_tutor()
+    {:ok, tutor} = Repo.update(Ecto.Changeset.change(tutor, tutor_student_limit: 1))
+    tutor_scope = user_scope_fixture(tutor)
+    first_student = user_fixture(%{role: :student, email: unique_user_email()})
+    second_student = user_fixture(%{role: :student, email: unique_user_email()})
+
+    assert {:ok, first_request} =
+             Recitations.request_tutor_connection(user_scope_fixture(first_student), tutor.email)
+
+    assert {:ok, _connection} = Recitations.accept_student_request(tutor_scope, first_request.id)
+
+    assert {:ok, second_request} =
+             Recitations.request_tutor_connection(user_scope_fixture(second_student), tutor.email)
+
+    assert {:error, :tutor_capacity_reached} =
+             Recitations.accept_student_request(tutor_scope, second_request.id)
+  end
+
+  test "students cannot request a tutor whose verification is not approved" do
+    tutor = user_fixture(%{role: :tutor, email: unique_user_email()})
+    student = user_fixture(%{role: :student, email: unique_user_email()})
+
+    assert {:error, :tutor_unavailable} =
+             Recitations.request_tutor_connection(user_scope_fixture(student), tutor.email)
+  end
+
+  defp verified_tutor(attrs \\ %{}) do
+    tutor = user_fixture(Map.merge(%{role: :tutor, email: unique_user_email()}, attrs))
+    {:ok, tutor} = Accounts.set_tutor_verification(tutor, :verified)
+    tutor
   end
 
   defp assignment_attrs do

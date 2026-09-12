@@ -247,6 +247,21 @@ defmodule AppWeb.UserAuth do
     end
   end
 
+  def on_mount(:require_admin, _params, session, socket) do
+    socket = mount_current_scope(socket, session)
+
+    if match?(%Scope{user: %Accounts.User{role: :admin}}, socket.assigns.current_scope) do
+      {:cont, socket}
+    else
+      socket =
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "Administrator access is required.")
+        |> Phoenix.LiveView.redirect(to: ~p"/")
+
+      {:halt, socket}
+    end
+  end
+
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
       {user, _} =
@@ -290,6 +305,7 @@ defmodule AppWeb.UserAuth do
   @doc "Returns the path to redirect to after log in."
   def signed_in_path(%Accounts.User{role: :tutor}), do: ~p"/tutor"
   def signed_in_path(%Accounts.User{role: :student}), do: ~p"/dashboard"
+  def signed_in_path(%Accounts.User{role: :admin}), do: ~p"/admin/tutors"
 
   def signed_in_path(%Plug.Conn{
         assigns: %{current_scope: %Scope{user: %Accounts.User{role: :tutor}}}
@@ -301,6 +317,12 @@ defmodule AppWeb.UserAuth do
         assigns: %{current_scope: %Scope{user: %Accounts.User{role: :student}}}
       }) do
     ~p"/dashboard"
+  end
+
+  def signed_in_path(%Plug.Conn{
+        assigns: %{current_scope: %Scope{user: %Accounts.User{role: :admin}}}
+      }) do
+    ~p"/admin/tutors"
   end
 
   def signed_in_path(_), do: ~p"/"
