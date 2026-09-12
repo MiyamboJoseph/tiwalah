@@ -31,6 +31,16 @@ defmodule AppWeb.DashboardLive do
     send_tutor_request(tutor_id, socket)
   end
 
+  def handle_event("select_tutor", %{"tutor_request" => %{"tutor_id" => tutor_id}}, socket) do
+    selected_tutor = Enum.find(socket.assigns.tutor_directory, &(to_string(&1.id) == tutor_id))
+
+    {:noreply,
+     assign(socket,
+       selected_tutor: selected_tutor,
+       tutor_request_form: to_form(%{"tutor_id" => tutor_id}, as: "tutor_request")
+     )}
+  end
+
   def handle_event("accept_tutor_request", %{"id" => id}, socket) do
     case Recitations.accept_tutor_request(socket.assigns.current_scope, id) do
       {:ok, _connection} ->
@@ -132,7 +142,12 @@ defmodule AppWeb.DashboardLive do
               Choose a tutor and send a learning request. They must accept before any portion is assigned.
             </p>
           </div>
-          <.form for={@tutor_request_form} phx-submit="request_tutor" class="w-full sm:max-w-md">
+          <.form
+            for={@tutor_request_form}
+            phx-change="select_tutor"
+            phx-submit="request_tutor"
+            class="w-full sm:max-w-md"
+          >
             <.input
               field={@tutor_request_form[:tutor_id]}
               type="select"
@@ -149,6 +164,42 @@ defmodule AppWeb.DashboardLive do
             </.button>
           </.form>
         </div>
+        <article
+          :if={@selected_tutor}
+          class="mt-4 rounded-xl border border-emerald-900/10 bg-emerald-50/60 p-4"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="font-semibold text-emerald-950">{tutor_name(@selected_tutor)}</p>
+              <p :if={@selected_tutor.tutor_qualification} class="mt-1 text-sm text-stone-700">
+                {@selected_tutor.tutor_qualification}
+              </p>
+            </div>
+            <span class="rounded-full bg-emerald-800 px-2.5 py-1 text-xs font-semibold text-white">
+              Verified tutor
+            </span>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+            <span
+              :if={@selected_tutor.tutor_languages}
+              class="rounded-full bg-white px-2.5 py-1 text-emerald-900"
+            >
+              {@selected_tutor.tutor_languages}
+            </span>
+            <span
+              :if={@selected_tutor.tutor_teaching_format}
+              class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900"
+            >
+              {teaching_format(@selected_tutor.tutor_teaching_format)}
+            </span>
+          </div>
+          <p :if={@selected_tutor.tutor_availability} class="mt-3 text-sm text-stone-600">
+            Availability: {@selected_tutor.tutor_availability}
+          </p>
+          <p :if={@selected_tutor.tutor_bio} class="mt-2 text-sm leading-6 text-stone-700">
+            {@selected_tutor.tutor_bio}
+          </p>
+        </article>
         <p :if={@tutor_directory == []} class="mt-4 text-sm text-stone-600 dark:text-stone-300">
           No verified tutors are available yet. Please check again soon.
         </p>
@@ -412,6 +463,7 @@ defmodule AppWeb.DashboardLive do
       requested_tutors: Recitations.list_pending_requested_tutors(socket.assigns.current_scope),
       tutor_directory: Recitations.list_tutor_directory(socket.assigns.current_scope),
       tutor_request_form: to_form(%{"tutor_id" => ""}, as: "tutor_request"),
+      selected_tutor: nil,
       active_tutors: Recitations.list_active_tutors(socket.assigns.current_scope),
       progress: Recitations.student_progress(socket.assigns.current_scope)
     )

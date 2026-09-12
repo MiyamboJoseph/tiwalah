@@ -161,6 +161,17 @@ defmodule App.Recitations do
     )
   end
 
+  def list_student_directory(%Scope{user: %User{id: tutor_id, role: :tutor}}) do
+    Repo.all(
+      from student in User,
+        left_join: connection in TutorStudentConnection,
+        on: connection.student_id == student.id and connection.tutor_id == ^tutor_id,
+        where: student.role == :student and is_nil(connection.id),
+        order_by: [asc: student.first_name, asc: student.last_name, asc: student.email],
+        limit: 30
+    )
+  end
+
   def list_pending_student_requests(%Scope{user: %User{id: tutor_id, role: :tutor}}) do
     Repo.all(
       from connection in TutorStudentConnection,
@@ -173,48 +184,70 @@ defmodule App.Recitations do
     )
   end
 
-  def request_student_connection(%Scope{user: %User{id: tutor_id, role: :tutor}}, email) do
+  def request_student_connection(%Scope{user: %User{id: tutor_id, role: :tutor}}, student_id)
+      when is_integer(student_id) do
     with :ok <- ensure_tutor_available(tutor_id) do
-      request_student_connection_for_tutor(tutor_id, email)
+      request_student_connection_for_tutor_id(tutor_id, student_id)
     end
   end
 
-  defp request_student_connection_for_tutor(tutor_id, email) do
+  def request_student_connection(%Scope{user: %User{id: tutor_id, role: :tutor}}, student_id)
+      when is_binary(student_id) do
+    with :ok <- ensure_tutor_available(tutor_id) do
+      case Integer.parse(student_id) do
+        {id, ""} -> request_student_connection_for_tutor_id(tutor_id, id)
+        _ -> request_student_connection_for_tutor_email(tutor_id, student_id)
+      end
+    end
+  end
+
+  defp request_student_connection_for_tutor_id(tutor_id, student_id) do
+    case Repo.get(User, student_id) do
+      %User{role: :student} -> request_student_connection_for_tutor(tutor_id, student_id)
+      _ -> {:error, :student_not_found}
+    end
+  end
+
+  defp request_student_connection_for_tutor_email(tutor_id, email) do
     case find_user_by_email_and_role(email, :student) do
       nil ->
         {:error, :student_not_found}
 
       %User{id: student_id} ->
-        case Repo.get_by(TutorStudentConnection, tutor_id: tutor_id, student_id: student_id) do
-          %TutorStudentConnection{status: :active} ->
-            {:error, :already_connected}
+        request_student_connection_for_tutor(tutor_id, student_id)
+    end
+  end
 
-          %TutorStudentConnection{status: :pending} ->
-            {:error, :already_requested}
+  defp request_student_connection_for_tutor(tutor_id, student_id) do
+    case Repo.get_by(TutorStudentConnection, tutor_id: tutor_id, student_id: student_id) do
+      %TutorStudentConnection{status: :active} ->
+        {:error, :already_connected}
 
-          nil ->
-            %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
-            |> TutorStudentConnection.changeset(%{status: :pending, requested_by: :tutor})
-            |> Repo.insert()
-            |> case do
-              {:ok, connection} ->
-                broadcast_student(
-                  student_id,
-                  {:recitation_changed, :tutor_request, connection.id}
-                )
+      %TutorStudentConnection{status: :pending} ->
+        {:error, :already_requested}
 
-                Notifications.create(student_id, %{
-                  kind: "tutor_request",
-                  title: "New tutor request",
-                  body: "A tutor would like to guide your recitation.",
-                  path: "/dashboard"
-                })
+      nil ->
+        %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
+        |> TutorStudentConnection.changeset(%{status: :pending, requested_by: :tutor})
+        |> Repo.insert()
+        |> case do
+          {:ok, connection} ->
+            broadcast_student(
+              student_id,
+              {:recitation_changed, :tutor_request, connection.id}
+            )
 
-                {:ok, connection}
+            Notifications.create(student_id, %{
+              kind: "tutor_request",
+              title: "New tutor request",
+              body: "A tutor would like to guide your recitation.",
+              path: "/dashboard"
+            })
 
-              {:error, changeset} ->
-                connection_insert_error(changeset)
-            end
+            {:ok, connection}
+
+          {:error, changeset} ->
+            connection_insert_error(changeset)
         end
     end
   end

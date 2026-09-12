@@ -18,7 +18,7 @@ defmodule App.RecitationsTest do
 
     assert "must be an active student account" in errors_on(changeset).student_id
 
-    assert {:ok, _request} = Recitations.request_student_connection(tutor_scope, student.email)
+    assert {:ok, _request} = Recitations.request_student_connection(tutor_scope, student.id)
     [request] = Recitations.list_pending_tutor_requests(student_scope)
     assert {:ok, _connection} = Recitations.accept_tutor_request(student_scope, request.id)
 
@@ -98,6 +98,22 @@ defmodule App.RecitationsTest do
 
     assert [%{id: tutor_id}] = Recitations.list_tutor_directory(user_scope_fixture(student))
     assert tutor_id == verified.id
+  end
+
+  test "the student directory excludes students already connected to the tutor" do
+    tutor = verified_tutor()
+    available_student = user_fixture(%{role: :student, email: unique_user_email()})
+    connected_student = user_fixture(%{role: :student, email: unique_user_email()})
+    tutor_scope = user_scope_fixture(tutor)
+
+    assert {:ok, request} =
+             Recitations.request_student_connection(tutor_scope, connected_student.id)
+
+    assert {:ok, _connection} =
+             Recitations.accept_tutor_request(user_scope_fixture(connected_student), request.id)
+
+    assert [%{id: student_id}] = Recitations.list_student_directory(tutor_scope)
+    assert student_id == available_student.id
   end
 
   test "a tutor cannot accept beyond their student capacity" do

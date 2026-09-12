@@ -124,12 +124,12 @@ defmodule AppWeb.TutorLive.Dashboard do
     end
   end
 
-  def handle_event("request_student", %{"connection" => %{"email" => email}}, socket) do
-    case Recitations.request_student_connection(socket.assigns.current_scope, email) do
+  def handle_event("request_student", %{"connection" => %{"student_id" => student_id}}, socket) do
+    case Recitations.request_student_connection(socket.assigns.current_scope, student_id) do
       {:ok, _connection} ->
         {:noreply,
          socket
-         |> assign(connection_form: to_form(%{"email" => ""}, as: "connection"))
+         |> assign(connection_form: to_form(%{"student_id" => ""}, as: "connection"))
          |> put_flash(
            :info,
            "Tutor request sent. The student must accept before you can assign a portion."
@@ -139,8 +139,8 @@ defmodule AppWeb.TutorLive.Dashboard do
         {:noreply,
          put_flash(
            socket,
-           :info,
-           "If that student has a Tilawah account, they will receive your connection request."
+           :error,
+           "Select an available student to continue."
          )}
 
       {:error, :already_requested} ->
@@ -314,17 +314,30 @@ defmodule AppWeb.TutorLive.Dashboard do
             >
               <div class="mt-4 flex flex-col gap-3 sm:flex-row lg:flex-col">
                 <.input
-                  field={@connection_form[:email]}
-                  type="email"
-                  label="Student email"
-                  placeholder="student@example.com"
+                  field={@connection_form[:student_id]}
+                  type="select"
+                  label="Choose an available student"
+                  prompt="Select a student"
+                  options={Enum.map(@student_directory, &{student_label(&1), &1.id})}
                   required
                 />
-                <.button class="bg-emerald-800 text-white hover:bg-emerald-900">
+                <.button
+                  disabled={not can_invite_students?(assigns)}
+                  class="bg-emerald-800 text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
                   Request connection
                 </.button>
               </div>
             </.form>
+            <p
+              :if={@current_scope.user.tutor_verification_status != :verified}
+              class="mt-3 text-sm text-amber-800"
+            >
+              Your profile must be verified before you can invite a student.
+            </p>
+            <p :if={@student_directory == []} class="mt-3 text-sm text-stone-600">
+              No available students are listed yet.
+            </p>
           </details>
           <h2 class="font-serif text-xl font-bold text-emerald-950 dark:text-emerald-100">
             Assign a portion
@@ -432,9 +445,10 @@ defmodule AppWeb.TutorLive.Dashboard do
       students: Recitations.list_students(scope),
       connections: Recitations.list_active_connections(scope),
       student_requests: Recitations.list_pending_student_requests(scope),
+      student_directory: Recitations.list_student_directory(scope),
       form: to_form(changeset, as: "assignment"),
       template_due_in_days: nil,
-      connection_form: to_form(%{"email" => ""}, as: "connection"),
+      connection_form: to_form(%{"student_id" => ""}, as: "connection"),
       templates: Recitations.list_templates(scope)
     )
   end
@@ -442,6 +456,12 @@ defmodule AppWeb.TutorLive.Dashboard do
   defp student_label(student) do
     name = [student.first_name, student.last_name] |> Enum.reject(&is_nil/1) |> Enum.join(" ")
     if name == "", do: student.email, else: "#{name} (#{student.email})"
+  end
+
+  defp can_invite_students?(assigns) do
+    assigns.current_scope.user.tutor_verification_status == :verified and
+      assigns.student_directory != [] and
+      length(assigns.students) < assigns.current_scope.user.tutor_student_limit
   end
 
   defp verification_message(:verified), do: "Tutor profile verified"
