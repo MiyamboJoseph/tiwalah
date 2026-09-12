@@ -85,6 +85,21 @@ defmodule App.Accounts do
     User.registration_changeset(user, attrs, opts)
   end
 
+  @doc "Marks a tutor profile after a manual credential review by trusted staff."
+  def set_tutor_verification(%User{role: :tutor} = user, status)
+      when status in [:pending, :verified, :rejected] do
+    changes = %{tutor_verification_status: status}
+
+    changes =
+      if status == :verified,
+        do: Map.put(changes, :tutor_verified_at, DateTime.utc_now(:second)),
+        else: Map.put(changes, :tutor_verified_at, nil)
+
+    user
+    |> Ecto.Changeset.change(changes)
+    |> Repo.update()
+  end
+
   ## Settings
 
   @doc """

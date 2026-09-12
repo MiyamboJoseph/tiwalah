@@ -34,6 +34,26 @@ defmodule AppWeb.DashboardLive do
     end
   end
 
+  def handle_event("decline_tutor_request", %{"id" => id}, socket) do
+    case Recitations.decline_tutor_request(socket.assigns.current_scope, id) do
+      {:ok, _connection} ->
+        {:noreply, socket |> put_flash(:info, "Tutor request declined.") |> load_dashboard()}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That tutor request is no longer available.")}
+    end
+  end
+
+  def handle_event("disconnect_tutor", %{"id" => id}, socket) do
+    case Recitations.disconnect_tutor_student(socket.assigns.current_scope, id) do
+      {:ok, _connection} ->
+        {:noreply, socket |> put_flash(:info, "Tutor connection ended.") |> load_dashboard()}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That tutor connection is no longer available.")}
+    end
+  end
+
   def render(assigns) do
     pending = assigns.assignment_counts.assigned + assigns.assignment_counts.repeat_required
     reviewed = assigns.assignment_counts.reviewed
@@ -51,7 +71,7 @@ defmodule AppWeb.DashboardLive do
         </p>
       </section>
       <section class="grid gap-4 sm:grid-cols-3">
-        <.metric title="Assigned portions" value={@assignment_counts.total} icon="hero-book-open" />
+        <.metric title="Active portions" value={@assignment_counts.active} icon="hero-book-open" />
         <.metric title="Ready to record" value={@pending} icon="hero-microphone" />
         <.metric title="Approved" value={@reviewed} icon="hero-check-badge" />
       </section>
@@ -121,15 +141,49 @@ defmodule AppWeb.DashboardLive do
               <p :if={request.tutor.tutor_bio} class="mt-2 text-sm leading-6 text-stone-600">
                 {request.tutor.tutor_bio}
               </p>
+              <p class="mt-2 text-xs font-semibold text-stone-500">
+                {tutor_verification_label(request.tutor.tutor_verification_status)}
+              </p>
             </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                id={"accept-tutor-#{request.id}"}
+                type="button"
+                phx-click="accept_tutor_request"
+                phx-value-id={request.id}
+                class="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+              >
+                Accept tutor
+              </button>
+              <button
+                id={"decline-tutor-#{request.id}"}
+                type="button"
+                phx-click="decline_tutor_request"
+                phx-value-id={request.id}
+                class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section :if={@active_tutors != []} class="rounded-2xl bg-white p-5 shadow-sm dark:bg-base-200">
+        <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your tutors</p>
+        <div class="mt-3 flex flex-wrap gap-3">
+          <div
+            :for={{connection_id, tutor} <- @active_tutors}
+            class="rounded-xl border border-emerald-900/10 p-3"
+          >
+            <p class="font-semibold text-emerald-950">{tutor_name(tutor)}</p>
             <button
-              id={"accept-tutor-#{request.id}"}
               type="button"
-              phx-click="accept_tutor_request"
-              phx-value-id={request.id}
-              class="shrink-0 rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+              phx-click="disconnect_tutor"
+              phx-value-id={connection_id}
+              data-confirm="End this tutor connection? Existing recitation history will remain available."
+              class="mt-2 text-sm font-semibold text-rose-700 hover:underline"
             >
-              Accept tutor
+              End connection
             </button>
           </div>
         </div>
@@ -237,6 +291,11 @@ defmodule AppWeb.DashboardLive do
   defp teaching_format("both"), do: "Online & in person"
   defp teaching_format(_format), do: "Teaching format not stated"
 
+  defp tutor_verification_label(:verified), do: "Tutor profile verified"
+  defp tutor_verification_label(:pending), do: "Credentials submitted · verification pending"
+  defp tutor_verification_label(:rejected), do: "Verification needs attention"
+  defp tutor_verification_label(_status), do: "Tutor profile"
+
   defp load_dashboard(socket, page \\ nil) do
     page = page || Map.get(socket.assigns, :page, 1)
     assignment_page = Recitations.paginate_assignments(socket.assigns.current_scope, page)
@@ -247,6 +306,7 @@ defmodule AppWeb.DashboardLive do
       page: assignment_page.page,
       total_pages: assignment_page.total_pages,
       tutor_requests: Recitations.list_pending_tutor_requests(socket.assigns.current_scope),
+      active_tutors: Recitations.list_active_tutors(socket.assigns.current_scope),
       progress: Recitations.student_progress(socket.assigns.current_scope)
     )
   end

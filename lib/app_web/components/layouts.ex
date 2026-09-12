@@ -34,6 +34,8 @@ defmodule AppWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns = assign_new(assigns, :unread_notification_count, fn -> 0 end)
+
     ~H"""
     <header class="border-b border-emerald-950/10 bg-[#fcfaf3] px-4 py-4 dark:bg-base-100 sm:px-8">
       <div class="mx-auto flex max-w-7xl items-center justify-between gap-4">
@@ -53,9 +55,16 @@ defmodule AppWeb.Layouts do
           <%= if @current_scope && @current_scope.user do %>
             <.link
               navigate={~p"/notifications"}
-              class="hidden text-sm font-semibold text-emerald-800 sm:block"
+              class="hidden items-center gap-1 text-sm font-semibold text-emerald-800 sm:inline-flex"
             >
               Notifications
+              <span
+                :if={@unread_notification_count > 0}
+                aria-label={"#{@unread_notification_count} unread notifications"}
+                class="grid size-5 place-items-center rounded-full bg-amber-400 text-[11px] font-bold text-emerald-950"
+              >
+                {if @unread_notification_count > 9, do: "9+", else: @unread_notification_count}
+              </span>
             </.link>
             <.link
               navigate={~p"/dashboard"}

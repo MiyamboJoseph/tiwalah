@@ -105,6 +105,25 @@ defmodule App.Recitations do
     )
   end
 
+  def list_active_connections(%Scope{user: %User{id: tutor_id, role: :tutor}}) do
+    Repo.all(
+      from connection in TutorStudentConnection,
+        where: connection.tutor_id == ^tutor_id and connection.status == :active,
+        order_by: [asc: connection.inserted_at],
+        preload: [:student]
+    )
+  end
+
+  def list_active_tutors(%Scope{user: %User{id: student_id, role: :student}}) do
+    Repo.all(
+      from connection in TutorStudentConnection,
+        join: tutor in assoc(connection, :tutor),
+        where: connection.student_id == ^student_id and connection.status == :active,
+        order_by: tutor.email,
+        select: {connection.id, tutor}
+    )
+  end
+
   def list_pending_tutor_requests(%Scope{user: %User{id: student_id, role: :student}}) do
     Repo.all(
       from connection in TutorStudentConnection,
@@ -121,24 +140,36 @@ defmodule App.Recitations do
         {:error, :student_not_found}
 
       %User{id: student_id} ->
-        %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
-        |> TutorStudentConnection.changeset(%{status: :pending})
-        |> Repo.insert(on_conflict: :nothing, conflict_target: [:tutor_id, :student_id])
-        |> case do
-          {:ok, connection} ->
-            broadcast_student(student_id, {:recitation_changed, :tutor_request, connection.id})
+        case Repo.get_by(TutorStudentConnection, tutor_id: tutor_id, student_id: student_id) do
+          %TutorStudentConnection{status: :active} ->
+            {:error, :already_connected}
 
-            Notifications.create(student_id, %{
-              kind: "tutor_request",
-              title: "New tutor request",
-              body: "A tutor would like to guide your recitation.",
-              path: "/dashboard"
-            })
+          %TutorStudentConnection{status: :pending} ->
+            {:error, :already_requested}
 
-            {:ok, connection}
+          nil ->
+            %TutorStudentConnection{tutor_id: tutor_id, student_id: student_id}
+            |> TutorStudentConnection.changeset(%{status: :pending})
+            |> Repo.insert()
+            |> case do
+              {:ok, connection} ->
+                broadcast_student(
+                  student_id,
+                  {:recitation_changed, :tutor_request, connection.id}
+                )
 
-          error ->
-            error
+                Notifications.create(student_id, %{
+                  kind: "tutor_request",
+                  title: "New tutor request",
+                  body: "A tutor would like to guide your recitation.",
+                  path: "/dashboard"
+                })
+
+                {:ok, connection}
+
+              error ->
+                error
+            end
         end
     end
   end
@@ -173,6 +204,25 @@ defmodule App.Recitations do
             error
         end
     end
+  end
+
+  def decline_tutor_request(%Scope{user: %User{id: student_id, role: :student}}, connection_id) do
+    case Repo.get_by(TutorStudentConnection,
+           id: connection_id,
+           student_id: student_id,
+           status: :pending
+         ) do
+      nil -> {:error, :not_found}
+      connection -> Repo.delete(connection)
+    end
+  end
+
+  def disconnect_tutor_student(%Scope{user: %User{id: student_id, role: :student}}, connection_id) do
+    disconnect_connection(connection_id, student_id: student_id)
+  end
+
+  def disconnect_tutor_student(%Scope{user: %User{id: tutor_id, role: :tutor}}, connection_id) do
+    disconnect_connection(connection_id, tutor_id: tutor_id)
   end
 
   def list_assignments(scope) do
@@ -214,6 +264,9 @@ defmodule App.Recitations do
 
     %{
       total: Enum.sum(Map.values(counts)),
+      active:
+        Map.get(counts, :assigned, 0) + Map.get(counts, :submitted, 0) +
+          Map.get(counts, :repeat_required, 0),
       assigned: Map.get(counts, :assigned, 0),
       submitted: Map.get(counts, :submitted, 0),
       reviewed: Map.get(counts, :reviewed, 0),
@@ -345,6 +398,7 @@ defmodule App.Recitations do
       {:ok, {submission, assignment}} ->
         Notifications.notify_submission(
           assignment.tutor.email,
+          assignment.tutor_id,
           scope.user.email,
           assignment.title
         )
@@ -414,6 +468,7 @@ defmodule App.Recitations do
         {:ok, reviewed} ->
           Notifications.notify_feedback(
             submission.student.email,
+            submission.student_id,
             submission.assignment.title,
             reviewed.status,
             reviewed.feedback
@@ -454,6 +509,26 @@ defmodule App.Recitations do
     %Submission{}
     |> Submission.submission_changeset(attrs)
     |> Ecto.Changeset.add_error(:audio_path, message)
+  end
+
+  defp disconnect_connection(connection_id, ownership) do
+    filters = Keyword.merge([id: connection_id, status: :active], ownership)
+
+    case Repo.get_by(TutorStudentConnection, filters) do
+      nil ->
+        {:error, :not_found}
+
+      connection ->
+        case Repo.delete(connection) do
+          {:ok, deleted} ->
+            broadcast_tutor(deleted.tutor_id, {:recitation_changed, :student_disconnected, nil})
+            broadcast_student(deleted.student_id, {:recitation_changed, :tutor_disconnected, nil})
+            {:ok, deleted}
+
+          error ->
+            error
+        end
+    end
   end
 
   def get_feedback_audio(%Scope{user: %User{id: user_id, role: :student}}, id) do

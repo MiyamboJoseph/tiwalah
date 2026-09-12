@@ -102,7 +102,8 @@ config :app, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 * * * *", App.Workers.DailyPracticeReminder},
-       {"30 2 * * *", App.Workers.AudioCleanupWorker}
+       {"30 2 * * *", App.Workers.AudioCleanupWorker},
+       {"0 3 * * *", App.Workers.AudioBackupWorker}
      ]}
   ]
 

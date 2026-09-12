@@ -19,6 +19,12 @@ defmodule App.Accounts.User do
     field :tutor_teaching_format, :string
     field :tutor_availability, :string
     field :tutor_bio, :string
+
+    field :tutor_verification_status, Ecto.Enum,
+      values: [:not_applicable, :pending, :verified, :rejected],
+      default: :not_applicable
+
+    field :tutor_verified_at, :utc_datetime
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
@@ -76,6 +82,7 @@ defmodule App.Accounts.User do
     |> validate_required([:time_zone])
     |> validate_acceptance(:terms_accepted, message: "must be accepted to create an account")
     |> validate_tutor_profile()
+    |> set_tutor_verification_status()
     |> record_terms_acceptance()
   end
 
@@ -105,6 +112,14 @@ defmodule App.Accounts.User do
   defp record_terms_acceptance(changeset) do
     if get_field(changeset, :terms_accepted) do
       put_change(changeset, :terms_accepted_at, DateTime.utc_now(:second))
+    else
+      changeset
+    end
+  end
+
+  defp set_tutor_verification_status(changeset) do
+    if get_field(changeset, :role) == :tutor do
+      put_change(changeset, :tutor_verification_status, :pending)
     else
       changeset
     end

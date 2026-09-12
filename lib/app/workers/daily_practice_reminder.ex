@@ -45,6 +45,7 @@ defmodule App.Workers.DailyPracticeReminder do
     %{
       "type" => "reminder",
       "recipient" => assignment.student.email,
+      "recipient_user_id" => assignment.student_id,
       "title" => assignment.title
     }
     |> EmailDeliveryWorker.new(unique: [period: 86_400, fields: [:worker, :args]])

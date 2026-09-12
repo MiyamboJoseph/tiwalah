@@ -29,11 +29,19 @@ defmodule AppWeb.TutorLive.Dashboard do
 
   def handle_event("validate", %{"assignment" => params}, socket) do
     changeset = Assignment.changeset(%Assignment{}, params) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, form: to_form(changeset, as: "assignment"))}
+
+    {:noreply,
+     assign(socket,
+       form: to_form(changeset, as: "assignment"),
+       template_due_in_days: Map.get(params, "template_due_in_days")
+     )}
   end
 
   def handle_event("assign", %{"assignment" => %{"action" => "save_template"} = params}, socket) do
-    attrs = Map.drop(params, ["student_id", "action", "due_date"])
+    attrs =
+      params
+      |> Map.drop(["student_id", "action", "due_date", "template_due_in_days"])
+      |> Map.put("due_in_days", Map.get(params, "template_due_in_days"))
 
     case Recitations.create_template(socket.assigns.current_scope, attrs) do
       {:ok, _template} ->
@@ -45,7 +53,7 @@ defmodule AppWeb.TutorLive.Dashboard do
   end
 
   def handle_event("assign", %{"assignment" => %{"student_id" => student_id} = params}, socket) do
-    attrs = Map.drop(params, ["student_id", "action"])
+    attrs = Map.drop(params, ["student_id", "action", "template_due_in_days"])
 
     case Recitations.create_assignment(socket.assigns.current_scope, student_id, attrs) do
       {:ok, _assignment} ->
@@ -70,7 +78,18 @@ defmodule AppWeb.TutorLive.Dashboard do
             |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
           )
 
-        {:noreply, assign(socket, form: to_form(values, as: "assignment"))}
+        due_date =
+          if is_integer(template.due_in_days) do
+            Date.utc_today() |> Date.add(template.due_in_days) |> Date.to_iso8601()
+          end
+
+        values = if due_date, do: Map.put(values, "due_date", due_date), else: values
+
+        {:noreply,
+         assign(socket,
+           form: to_form(values, as: "assignment"),
+           template_due_in_days: template.due_in_days
+         )}
     end
   end
 
@@ -93,8 +112,24 @@ defmodule AppWeb.TutorLive.Dashboard do
            "If that student has a Tilawah account, they will receive your connection request."
          )}
 
+      {:error, :already_requested} ->
+        {:noreply, put_flash(socket, :info, "That student already has your pending request.")}
+
+      {:error, :already_connected} ->
+        {:noreply, put_flash(socket, :info, "That student is already in your recitation circle.")}
+
       _ ->
         {:noreply, put_flash(socket, :error, "The tutor request could not be created.")}
+    end
+  end
+
+  def handle_event("disconnect_student", %{"id" => id}, socket) do
+    case Recitations.disconnect_tutor_student(socket.assigns.current_scope, id) do
+      {:ok, _connection} ->
+        {:noreply, socket |> put_flash(:info, "Student connection ended.") |> load_dashboard()}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That student connection is no longer available.")}
     end
   end
 
@@ -109,9 +144,12 @@ defmodule AppWeb.TutorLive.Dashboard do
         <p class="mt-3 max-w-2xl text-emerald-100">
           Assign a focused portion, listen attentively, and give gentle, useful correction.
         </p>
+        <p class="mt-4 inline-flex rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-amber-100">
+          {verification_message(@current_scope.user.tutor_verification_status)}
+        </p>
       </section>
       <section class="grid gap-4 sm:grid-cols-3">
-        <.metric title="Active assignments" value={@assignment_counts.total} icon="hero-book-open" /><.metric
+        <.metric title="Active assignments" value={@assignment_counts.active} icon="hero-book-open" /><.metric
           title="Awaiting review"
           value={@assignment_counts.submitted}
           icon="hero-headphones"
@@ -120,13 +158,26 @@ defmodule AppWeb.TutorLive.Dashboard do
       <section :if={@students != []} class="rounded-2xl bg-white p-5 shadow-sm dark:bg-base-200">
         <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your students</p>
         <div class="mt-3 flex flex-wrap gap-2">
-          <.link
-            :for={student <- @students}
-            navigate={~p"/tutor/students/#{student.id}"}
-            class="rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+          <div
+            :for={connection <- @connections}
+            class="flex items-center gap-2 rounded-lg border border-emerald-800 px-3 py-2"
           >
-            {student_label(student)}
-          </.link>
+            <.link
+              navigate={~p"/tutor/students/#{connection.student.id}"}
+              class="text-sm font-semibold text-emerald-800 hover:underline"
+            >
+              {student_label(connection.student)}
+            </.link>
+            <button
+              type="button"
+              phx-click="disconnect_student"
+              phx-value-id={connection.id}
+              data-confirm="End this student connection? Existing recitation history will remain available."
+              class="text-xs font-semibold text-rose-700 hover:underline"
+            >
+              End
+            </button>
+          </div>
         </div>
       </section>
       <section class="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
@@ -251,6 +302,17 @@ defmodule AppWeb.TutorLive.Dashboard do
               />
             </div>
             <.input field={@form[:due_date]} type="date" label="Due date (optional)" />
+            <label class="block text-sm font-medium text-stone-700">
+              Template due in days
+              <span class="text-stone-400">(used only when saving a template)</span>
+              <input
+                type="number"
+                name="assignment[template_due_in_days]"
+                value={@template_due_in_days}
+                min="0"
+                class="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+              />
+            </label>
             <.button class="w-full bg-emerald-800 text-white hover:bg-emerald-900">
               Assign portion
             </.button>
@@ -281,7 +343,9 @@ defmodule AppWeb.TutorLive.Dashboard do
       page: assignment_page.page,
       total_pages: assignment_page.total_pages,
       students: Recitations.list_students(scope),
+      connections: Recitations.list_active_connections(scope),
       form: to_form(changeset, as: "assignment"),
+      template_due_in_days: nil,
       connection_form: to_form(%{"email" => ""}, as: "connection"),
       templates: Recitations.list_templates(scope)
     )
@@ -291,4 +355,9 @@ defmodule AppWeb.TutorLive.Dashboard do
     name = [student.first_name, student.last_name] |> Enum.reject(&is_nil/1) |> Enum.join(" ")
     if name == "", do: student.email, else: "#{name} (#{student.email})"
   end
+
+  defp verification_message(:verified), do: "Tutor profile verified"
+  defp verification_message(:pending), do: "Credentials submitted · verification pending"
+  defp verification_message(:rejected), do: "Verification needs attention"
+  defp verification_message(_status), do: "Tutor profile"
 end

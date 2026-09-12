@@ -43,29 +43,43 @@ defmodule App.Notifications do
   def mark_read(%Scope{user: user}, id) do
     with {:ok, id} <- Ecto.Type.cast(:id, id),
          %Notification{} = notification <- Repo.get_by(Notification, id: id, user_id: user.id) do
-      Repo.update(
-        Ecto.Changeset.change(notification,
-          read_at: DateTime.utc_now() |> DateTime.truncate(:second)
-        )
-      )
+      case Repo.update(
+             Ecto.Changeset.change(notification,
+               read_at: DateTime.utc_now() |> DateTime.truncate(:second)
+             )
+           ) do
+        {:ok, updated} ->
+          Phoenix.PubSub.broadcast(
+            App.PubSub,
+            "notifications:#{user.id}",
+            {:notification_read, updated.id}
+          )
+
+          {:ok, updated}
+
+        error ->
+          error
+      end
     else
       _ -> {:error, :not_found}
     end
   end
 
-  def notify_submission(tutor_email, student_email, title) do
+  def notify_submission(tutor_email, tutor_id, student_email, title) do
     enqueue(%{
       "type" => "submission",
       "recipient" => tutor_email,
+      "recipient_user_id" => tutor_id,
       "student" => student_email,
       "title" => title
     })
   end
 
-  def notify_feedback(student_email, title, status, feedback) do
+  def notify_feedback(student_email, student_id, title, status, feedback) do
     enqueue(%{
       "type" => "feedback",
       "recipient" => student_email,
+      "recipient_user_id" => student_id,
       "title" => title,
       "status" => Atom.to_string(status),
       "feedback" => feedback || ""

@@ -50,6 +50,26 @@ defmodule App.Recitations.AudioStorage do
     :ok
   end
 
+  def backup_private_files do
+    with backup_directory when is_binary(backup_directory) <-
+           Application.get_env(:app, :audio_backup_dir),
+         :ok <- File.mkdir_p(backup_directory),
+         {:ok, files} <- File.ls(private_directory()) do
+      Enum.each(files, fn file ->
+        source = Path.join(private_directory(), file)
+        destination = Path.join(backup_directory, file)
+
+        if File.regular?(source) and not File.exists?(destination),
+          do: File.cp(source, destination)
+      end)
+
+      :ok
+    else
+      nil -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp copy_to_private_storage(source_path, extension) do
     storage_key = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false) <> extension
     destination = path_for(storage_key)
@@ -59,7 +79,9 @@ defmodule App.Recitations.AudioStorage do
     end
   end
 
-  defp private_directory, do: Path.join([:code.priv_dir(:app), "uploads"])
+  defp private_directory do
+    Application.get_env(:app, :audio_storage_dir, Path.join([:code.priv_dir(:app), "uploads"]))
+  end
 
   defp audio_binary?(<<0x1A, 0x45, 0xDF, 0xA3, _rest::binary>>, ".webm"), do: true
   defp audio_binary?(<<"ID3", _rest::binary>>, ".mp3"), do: true

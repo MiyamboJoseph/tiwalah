@@ -2,6 +2,7 @@ defmodule AppWeb.NotificationLive do
   use AppWeb, :live_view
 
   alias App.Notifications
+  alias App.EmailDeliveryEvents
 
   def mount(_params, _session, socket) do
     if connected?(socket), do: Notifications.subscribe(socket.assigns.current_scope.user.id)
@@ -62,6 +63,27 @@ defmodule AppWeb.NotificationLive do
             </p>
           </button>
         </div>
+        <section :if={@email_delivery_events != []} class="mt-8 rounded-2xl bg-white p-5 shadow-sm">
+          <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-700">Email delivery</p>
+          <p class="mt-1 text-sm text-stone-600">
+            Your portal always contains the latest updates, even if an email is delayed.
+          </p>
+          <div class="mt-4 space-y-2">
+            <div
+              :for={event <- @email_delivery_events}
+              class="flex items-center justify-between gap-4 rounded-xl bg-stone-50 px-4 py-3 text-sm"
+            >
+              <span>{email_event_label(event.event_type)}</span>
+              <span class={
+                if event.status == :sent,
+                  do: "font-semibold text-emerald-800",
+                  else: "font-semibold text-rose-700"
+              }>
+                {if event.status == :sent, do: "Delivered", else: "Delivery delayed"}
+              </span>
+            </div>
+          </div>
+        </section>
       </div>
     </Layouts.app>
     """
@@ -71,6 +93,12 @@ defmodule AppWeb.NotificationLive do
     do:
       assign(socket,
         notifications: Notifications.list(socket.assigns.current_scope),
-        unread_count: Notifications.unread_count(socket.assigns.current_scope)
+        unread_count: Notifications.unread_count(socket.assigns.current_scope),
+        email_delivery_events: EmailDeliveryEvents.recent(socket.assigns.current_scope)
       )
+
+  defp email_event_label("submission"), do: "New submission alert"
+  defp email_event_label("feedback"), do: "Tutor feedback alert"
+  defp email_event_label("reminder"), do: "Practice reminder"
+  defp email_event_label(_type), do: "Tilawah update"
 end

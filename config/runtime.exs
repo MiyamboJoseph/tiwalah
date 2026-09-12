@@ -115,6 +115,20 @@ if config_env() == :prod do
          :mail_from,
          {System.get_env("MAIL_FROM_NAME") || "Tilawah Recitation Circle", from_email}
 
+  # Audio must live on a persistent private volume in production. Configure this
+  # to a mounted encrypted volume or a directory synchronized by your storage provider.
+  audio_storage_dir =
+    System.get_env("AUDIO_STORAGE_DIR") ||
+      raise "environment variable AUDIO_STORAGE_DIR is required for private recitation audio"
+
+  config :app, :audio_storage_dir, audio_storage_dir
+
+  audio_backup_dir =
+    System.get_env("AUDIO_BACKUP_DIR") ||
+      raise "environment variable AUDIO_BACKUP_DIR is required for private recitation backups"
+
+  config :app, :audio_backup_dir, audio_backup_dir
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

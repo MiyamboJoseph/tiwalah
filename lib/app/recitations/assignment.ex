@@ -17,7 +17,7 @@ defmodule App.Recitations.Assignment do
 
     belongs_to :tutor, App.Accounts.User
     belongs_to :student, App.Accounts.User
-    has_many :submissions, App.Recitations.Submission
+    has_many :submissions, App.Recitations.Submission, preload_order: [desc: :inserted_at]
 
     timestamps(type: :utc_datetime)
   end

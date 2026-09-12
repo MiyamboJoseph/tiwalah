@@ -6,6 +6,7 @@ defmodule AppWeb.UserAuth do
 
   alias App.Accounts
   alias App.Accounts.Scope
+  alias App.Notifications
 
   # Make the remember me cookie valid for 14 days. This should match
   # the session validity setting in UserToken.
@@ -220,7 +221,7 @@ defmodule AppWeb.UserAuth do
     socket = mount_current_scope(socket, session)
 
     if socket.assigns.current_scope && socket.assigns.current_scope.user do
-      {:cont, socket}
+      {:cont, mount_notification_badge(socket)}
     else
       socket =
         socket
@@ -254,6 +255,35 @@ defmodule AppWeb.UserAuth do
         end || {nil, nil}
 
       Scope.for_user(user)
+    end)
+  end
+
+  defp mount_notification_badge(socket) do
+    scope = socket.assigns.current_scope
+
+    if Phoenix.LiveView.connected?(socket), do: Notifications.subscribe(scope.user.id)
+
+    socket
+    |> Phoenix.Component.assign(:unread_notification_count, Notifications.unread_count(scope))
+    |> Phoenix.LiveView.attach_hook(:notification_badge, :handle_info, fn
+      {:notification_created, _notification_id}, socket ->
+        {:cont,
+         Phoenix.Component.assign(
+           socket,
+           :unread_notification_count,
+           Notifications.unread_count(socket.assigns.current_scope)
+         )}
+
+      {:notification_read, _notification_id}, socket ->
+        {:halt,
+         Phoenix.Component.assign(
+           socket,
+           :unread_notification_count,
+           Notifications.unread_count(socket.assigns.current_scope)
+         )}
+
+      _message, socket ->
+        {:cont, socket}
     end)
   end
 
