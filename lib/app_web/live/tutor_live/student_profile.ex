@@ -51,7 +51,7 @@ defmodule AppWeb.TutorLive.StudentProfile do
           <div class="mt-4 space-y-3">
             <div
               :for={{area, count} <- @overview.correction_trends}
-              class="flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3"
             >
               <span class="font-medium text-emerald-950">{area}</span><span class="rounded-full bg-amber-200 px-3 py-1 text-sm font-bold text-amber-900">{count}</span>
             </div>

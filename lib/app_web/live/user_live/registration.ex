@@ -315,7 +315,7 @@ defmodule AppWeb.UserLive.Registration do
                 and <.link navigate={~p"/privacy"} class="font-semibold text-emerald-800 underline">Privacy Notice</.link>. Your profile and contact details are used only to run your recitation circle and connect you through student-approved learning relationships.
               </p>
 
-              <div class="flex items-center justify-between gap-3 border-t border-emerald-900/10 pt-4">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-t border-emerald-900/10 pt-4">
                 <button
                   :if={@step > 1}
                   type="submit"

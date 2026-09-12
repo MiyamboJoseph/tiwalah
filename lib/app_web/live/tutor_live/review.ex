@@ -181,7 +181,7 @@ defmodule AppWeb.TutorLive.Review do
           :for={submission <- @assignment.submissions}
           class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200"
         >
-          <div class="flex items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
             <p class="font-semibold text-emerald-950 dark:text-emerald-100">
               Submitted {Calendar.strftime(submission.inserted_at, "%d %b, %H:%M")}
             </p>
@@ -295,9 +295,9 @@ defmodule AppWeb.TutorLive.Review do
                   <p class="mt-1 text-xs text-stone-500">WEBM, MP3, WAV, M4A, or OGG up to 25 MB.</p>
                   <div
                     :for={entry <- @uploads.tutor_audio.entries}
-                    class="mt-2 flex items-center justify-between text-sm"
+                    class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm"
                   >
-                    <span>{entry.client_name} — {entry.progress}%</span><button
+                    <span class="min-w-0 break-all">{entry.client_name} — {entry.progress}%</span><button
                       type="button"
                       phx-click="cancel-tutor-audio"
                       phx-value-ref={entry.ref}

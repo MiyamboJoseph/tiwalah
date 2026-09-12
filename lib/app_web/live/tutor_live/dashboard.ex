@@ -284,7 +284,7 @@ defmodule AppWeb.TutorLive.Dashboard do
               label="Practice title"
               placeholder="Morning revision"
             />
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid gap-3 sm:grid-cols-2">
               <.input field={@form[:juz_number]} type="number" label="Juz" min="1" max="30" /><.input
                 field={@form[:surah_name]}
                 type="select"
@@ -293,7 +293,7 @@ defmodule AppWeb.TutorLive.Dashboard do
                 options={Quran.surah_options()}
               />
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid gap-3 sm:grid-cols-2">
               <.input field={@form[:ayah_from]} type="number" label="First ayah" min="1" /><.input
                 field={@form[:ayah_to]}
                 type="number"

@@ -10,8 +10,8 @@ defmodule AppWeb.RecitationComponents do
   def assignment_card(assigns) do
     ~H"""
     <article class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-base-200">
-      <div class="flex items-start justify-between gap-4">
-        <div>
+      <div class="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+        <div class="min-w-0">
           <p class="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">
             Juz {@assignment.juz_number}
           </p>
@@ -25,7 +25,7 @@ defmodule AppWeb.RecitationComponents do
         <.status_badge status={@assignment.status} />
       </div>
       {render_slot(@detail)}
-      <div class="mt-5 flex items-center justify-between border-t border-emerald-900/10 pt-4 text-sm text-stone-600 dark:text-stone-300">
+      <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-emerald-900/10 pt-4 text-sm text-stone-600 dark:text-stone-300">
         <span :if={@assignment.due_date}>
           Due {Calendar.strftime(@assignment.due_date, "%d %b %Y")}
         </span>
@@ -179,19 +179,19 @@ defmodule AppWeb.RecitationComponents do
       :if={match?({:ok, _}, @passage)}
       class="rounded-2xl border border-emerald-900/10 bg-emerald-50/60 p-5 sm:p-6"
     >
-      <div class="flex items-center justify-between gap-4">
-        <div>
+      <div class="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+        <div class="min-w-0">
           <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-700">Assigned āyāt</p>
           <p class="mt-1 text-sm text-stone-600">
             Ayat {@first_ayah}–{@last_ayah} of {@total_ayahs}. Read from the same portion before recording or reviewing.
           </p>
         </div>
-        <div class="flex shrink-0 items-center gap-3">
+        <div class="flex shrink-0 items-center gap-2">
           <button
             :if={@allow_show_all && @total_pages > 1}
             type="button"
             phx-click={@on_show_all}
-            class="rounded-lg border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-900 transition hover:bg-emerald-100"
+            class="rounded-lg border border-emerald-800 px-2.5 py-2 text-xs font-semibold text-emerald-900 transition hover:bg-emerald-100 sm:px-3"
           >
             {if @show_all, do: "Use pages", else: "Show all"}
           </button>
@@ -210,7 +210,7 @@ defmodule AppWeb.RecitationComponents do
             >
               {verse.number}
             </span>
-            <p class="max-w-full text-right font-serif text-2xl leading-[2.35] text-emerald-950 sm:text-[1.9rem]">
+            <p class="max-w-full text-right font-serif text-xl leading-[2.25] text-emerald-950 sm:text-[1.9rem] sm:leading-[2.35]">
               {verse.arabic}
             </p>
           </div>
@@ -253,7 +253,7 @@ defmodule AppWeb.RecitationComponents do
       <p class="text-sm text-stone-600 dark:text-stone-300">
         Page {@page} of {@total_pages} · {@total_entries} {@item_label}
       </p>
-      <div class="flex items-center gap-1" role="list">
+      <div class="flex flex-wrap items-center gap-1" role="list">
         <button
           type="button"
           phx-click={@on_change}
@@ -344,9 +344,9 @@ defmodule AppWeb.RecitationComponents do
   def metric(assigns) do
     ~H"""
     <div class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200">
-      <div class="flex items-center justify-between">
-        <span class="text-sm font-medium text-stone-600 dark:text-stone-300">{@title}</span>
-        <.icon name={@icon} class="size-5 text-amber-600" />
+      <div class="flex items-center justify-between gap-3">
+        <span class="min-w-0 text-sm font-medium text-stone-600 dark:text-stone-300">{@title}</span>
+        <.icon name={@icon} class="size-5 shrink-0 text-amber-600" />
       </div>
       <p class="mt-3 text-3xl font-bold text-emerald-950 dark:text-emerald-100">{@value}</p>
     </div>

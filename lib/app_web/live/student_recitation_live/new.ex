@@ -86,7 +86,7 @@ defmodule AppWeb.StudentRecitationLive.New do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-6xl">
+      <div class="mx-auto max-w-7xl">
         <.link navigate={~p"/dashboard"} class="text-sm font-semibold text-emerald-800">
           ← Back to my portal
         </.link>
@@ -166,10 +166,10 @@ defmodule AppWeb.StudentRecitationLive.New do
               </div>
               <div
                 :for={entry <- @uploads.audio.entries}
-                class="mt-3 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm dark:bg-base-200"
+                class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm dark:bg-base-200"
               >
-                <div>
-                  <span>{entry.client_name}</span>
+                <div class="min-w-0">
+                  <span class="block truncate">{entry.client_name}</span>
                   <p :if={!entry.done?} class="mt-1 text-xs text-stone-500">
                     Uploading… {entry.progress}%
                   </p>
@@ -184,7 +184,7 @@ defmodule AppWeb.StudentRecitationLive.New do
                   type="button"
                   phx-click="cancel-upload"
                   phx-value-ref={entry.ref}
-                  class="text-rose-700"
+                  class="shrink-0 text-rose-700"
                 >
                   Remove
                 </button>

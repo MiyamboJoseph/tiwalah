@@ -72,7 +72,7 @@ defmodule AppWeb.StudentRecitationLive.Show do
             :for={submission <- @assignment.submissions}
             class="rounded-2xl bg-white p-6 shadow-sm dark:bg-base-200"
           >
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
               <p class="font-semibold text-emerald-950 dark:text-emerald-100">
                 Submitted {Calendar.strftime(submission.inserted_at, "%d %b, %H:%M")}
               </p>

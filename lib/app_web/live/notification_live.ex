@@ -71,7 +71,7 @@ defmodule AppWeb.NotificationLive do
           <div class="mt-4 space-y-2">
             <div
               :for={event <- @email_delivery_events}
-              class="flex items-center justify-between gap-4 rounded-xl bg-stone-50 px-4 py-3 text-sm"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-stone-50 px-4 py-3 text-sm"
             >
               <span>{email_event_label(event.event_type)}</span>
               <span class={
