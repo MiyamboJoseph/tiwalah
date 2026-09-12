@@ -86,5 +86,69 @@ defmodule App.Notifications do
     })
   end
 
+  def notify_connection_request(tutor_email, tutor_id, requester) do
+    enqueue(%{
+      "type" => "connection_request",
+      "recipient" => tutor_email,
+      "recipient_user_id" => tutor_id,
+      "requester" => requester
+    })
+  end
+
+  def notify_tutor_invitation(student_email, student_id, requester) do
+    enqueue(%{
+      "type" => "tutor_invitation",
+      "recipient" => student_email,
+      "recipient_user_id" => student_id,
+      "requester" => requester
+    })
+  end
+
+  def notify_connection_accepted(recipient_email, recipient_id, counterpart, portal_path) do
+    enqueue(%{
+      "type" => "connection_accepted",
+      "recipient" => recipient_email,
+      "recipient_user_id" => recipient_id,
+      "counterpart" => counterpart,
+      "portal_path" => portal_path
+    })
+  end
+
+  def notify_connection_declined(
+        recipient_email,
+        recipient_id,
+        counterpart,
+        action_label,
+        portal_path
+      ) do
+    enqueue(%{
+      "type" => "connection_declined",
+      "recipient" => recipient_email,
+      "recipient_user_id" => recipient_id,
+      "counterpart" => counterpart,
+      "action_label" => action_label,
+      "portal_path" => portal_path
+    })
+  end
+
+  def notify_assignment(student_email, student_id, title, path) do
+    enqueue(%{
+      "type" => "assignment",
+      "recipient" => student_email,
+      "recipient_user_id" => student_id,
+      "title" => title,
+      "path" => path
+    })
+  end
+
+  def notify_tutor_verification(tutor_email, tutor_id, status) do
+    enqueue(%{
+      "type" => "tutor_verification",
+      "recipient" => tutor_email,
+      "recipient_user_id" => tutor_id,
+      "status" => Atom.to_string(status)
+    })
+  end
+
   defp enqueue(args), do: args |> EmailDeliveryWorker.new() |> Oban.insert()
 end

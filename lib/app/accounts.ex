@@ -5,6 +5,7 @@ defmodule App.Accounts do
 
   import Ecto.Query, warn: false
   alias App.Repo
+  alias App.Notifications
 
   alias App.Accounts.{Scope, User, UserToken, UserNotifier}
 
@@ -123,7 +124,19 @@ defmodule App.Accounts do
           tutor_verified_by_id: admin_id
         }
 
-        Repo.update(Ecto.Changeset.change(tutor, changes))
+        case Repo.update(Ecto.Changeset.change(tutor, changes)) do
+          {:ok, updated_tutor} ->
+            Notifications.notify_tutor_verification(
+              updated_tutor.email,
+              updated_tutor.id,
+              status
+            )
+
+            {:ok, updated_tutor}
+
+          error ->
+            error
+        end
     end
   end
 

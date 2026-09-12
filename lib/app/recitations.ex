@@ -232,6 +232,9 @@ defmodule App.Recitations do
         |> Repo.insert()
         |> case do
           {:ok, connection} ->
+            tutor = Repo.get!(User, tutor_id)
+            student = Repo.get!(User, student_id)
+
             broadcast_student(
               student_id,
               {:recitation_changed, :tutor_request, connection.id}
@@ -243,6 +246,12 @@ defmodule App.Recitations do
               body: "A tutor would like to guide your recitation.",
               path: "/dashboard"
             })
+
+            Notifications.notify_tutor_invitation(
+              student.email,
+              student_id,
+              user_display_name(tutor)
+            )
 
             {:ok, connection}
 
@@ -305,6 +314,9 @@ defmodule App.Recitations do
         |> Repo.insert()
         |> case do
           {:ok, connection} ->
+            tutor = Repo.get!(User, tutor_id)
+            student = Repo.get!(User, student_id)
+
             broadcast_tutor(tutor_id, {:recitation_changed, :student_request, connection.id})
 
             Notifications.create(tutor_id, %{
@@ -313,6 +325,12 @@ defmodule App.Recitations do
               body: "A student would like to join your recitation circle.",
               path: "/tutor"
             })
+
+            Notifications.notify_connection_request(
+              tutor.email,
+              tutor_id,
+              user_display_name(student)
+            )
 
             {:ok, connection}
 
@@ -336,6 +354,9 @@ defmodule App.Recitations do
         if tutor_available?(connection.tutor_id) do
           case Repo.update(TutorStudentConnection.changeset(connection, %{status: :active})) do
             {:ok, active_connection} ->
+              tutor = Repo.get!(User, active_connection.tutor_id)
+              student = Repo.get!(User, active_connection.student_id)
+
               broadcast_tutor(
                 active_connection.tutor_id,
                 {:recitation_changed, :student_connected, nil}
@@ -347,6 +368,13 @@ defmodule App.Recitations do
                 body: "You can now assign portions to this student.",
                 path: "/tutor"
               })
+
+              Notifications.notify_connection_accepted(
+                tutor.email,
+                tutor.id,
+                user_display_name(student),
+                "/tutor"
+              )
 
               {:ok, active_connection}
 
@@ -372,6 +400,9 @@ defmodule App.Recitations do
       connection ->
         case Repo.delete(connection) do
           {:ok, deleted_connection} ->
+            tutor = Repo.get!(User, deleted_connection.tutor_id)
+            student = Repo.get!(User, deleted_connection.student_id)
+
             broadcast_tutor(
               deleted_connection.tutor_id,
               {:recitation_changed, :tutor_request_declined, nil}
@@ -383,6 +414,14 @@ defmodule App.Recitations do
               body: "The student declined your invitation to join their recitation circle.",
               path: "/tutor"
             })
+
+            Notifications.notify_connection_declined(
+              tutor.email,
+              tutor.id,
+              user_display_name(student),
+              "Open tutor portal",
+              "/tutor"
+            )
 
             {:ok, deleted_connection}
 
@@ -407,6 +446,9 @@ defmodule App.Recitations do
              :ok <- ensure_tutor_capacity(tutor_id) do
           case Repo.update(TutorStudentConnection.changeset(connection, %{status: :active})) do
             {:ok, active_connection} ->
+              tutor = Repo.get!(User, tutor_id)
+              student = Repo.get!(User, active_connection.student_id)
+
               broadcast_student(
                 active_connection.student_id,
                 {:recitation_changed, :tutor_connected, nil}
@@ -418,6 +460,13 @@ defmodule App.Recitations do
                 body: "Your teacher can now assign recitation portions and send guidance.",
                 path: "/dashboard"
               })
+
+              Notifications.notify_connection_accepted(
+                student.email,
+                student.id,
+                user_display_name(tutor),
+                "/dashboard"
+              )
 
               {:ok, active_connection}
 
@@ -441,6 +490,9 @@ defmodule App.Recitations do
       connection ->
         case Repo.delete(connection) do
           {:ok, deleted_connection} ->
+            tutor = Repo.get!(User, deleted_connection.tutor_id)
+            student = Repo.get!(User, deleted_connection.student_id)
+
             broadcast_student(
               deleted_connection.student_id,
               {:recitation_changed, :tutor_request_declined, nil}
@@ -452,6 +504,14 @@ defmodule App.Recitations do
               body: "This teacher is unable to take on your request at this time.",
               path: "/dashboard"
             })
+
+            Notifications.notify_connection_declined(
+              student.email,
+              student.id,
+              user_display_name(tutor),
+              "Find a verified tutor",
+              "/dashboard"
+            )
 
             {:ok, deleted_connection}
 
@@ -574,6 +634,8 @@ defmodule App.Recitations do
            |> Assignment.changeset(attrs)
            |> Repo.insert() do
         {:ok, assignment} ->
+          student = Repo.get!(User, student_id)
+
           broadcast_student(
             student_id,
             {:recitation_changed, :assignment_assigned, assignment.id}
@@ -585,6 +647,13 @@ defmodule App.Recitations do
             body: assignment.title,
             path: "/recitations/new/#{assignment.id}"
           })
+
+          Notifications.notify_assignment(
+            student.email,
+            student_id,
+            assignment.title,
+            "/recitations/new/#{assignment.id}"
+          )
 
           {:ok, assignment}
 
@@ -868,6 +937,16 @@ defmodule App.Recitations do
 
   defp find_user_by_email_and_role(email, role) do
     Repo.get_by(User, email: email |> String.trim() |> String.downcase(), role: role)
+  end
+
+  defp user_display_name(user) do
+    [user.first_name, user.last_name]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+    |> case do
+      "" -> user.email
+      name -> name
+    end
   end
 
   defp tutor_available?(tutor_id) do
