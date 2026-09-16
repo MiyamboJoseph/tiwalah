@@ -15,8 +15,14 @@ defmodule App.Accounts.UserNotifier do
       |> text_body(text)
       |> html_body(html)
 
-    with {:ok, _metadata} <- Mailer.deliver(email) do
-      {:ok, email}
+    try do
+      with {:ok, _metadata} <- Mailer.deliver(email) do
+        {:ok, email}
+      end
+    rescue
+      error -> {:error, Exception.message(error)}
+    catch
+      kind, reason -> {:error, {kind, reason}}
     end
   end
 
@@ -36,6 +42,12 @@ defmodule App.Accounts.UserNotifier do
       _ -> deliver_magic_link_instructions(user, url)
     end
   end
+
+  @doc """
+  Delivers a normal Tilawah lifecycle email immediately using the same mailer
+  as account confirmation and sign-in messages.
+  """
+  def deliver_notification(recipient, template), do: deliver(recipient, template)
 
   defp deliver_magic_link_instructions(user, url) do
     deliver(user.email, EmailTemplates.auth(:magic_link, user, url))

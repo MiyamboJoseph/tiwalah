@@ -652,7 +652,8 @@ defmodule App.Recitations do
             student.email,
             student_id,
             assignment.title,
-            "/recitations/new/#{assignment.id}"
+            "/recitations/new/#{assignment.id}",
+            assignment_email_details(assignment)
           )
 
           {:ok, assignment}
@@ -784,7 +785,8 @@ defmodule App.Recitations do
             submission.student_id,
             submission.assignment.title,
             reviewed.status,
-            reviewed.feedback
+            reviewed.feedback,
+            feedback_email_details(reviewed)
           )
 
           broadcast_student(
@@ -822,6 +824,26 @@ defmodule App.Recitations do
     %Submission{}
     |> Submission.submission_changeset(attrs)
     |> Ecto.Changeset.add_error(:audio_path, message)
+  end
+
+  defp assignment_email_details(assignment) do
+    %{
+      "surah" => assignment.surah_name,
+      "ayah_from" => assignment.ayah_from,
+      "ayah_to" => assignment.ayah_to,
+      "due_date" => assignment.due_date
+    }
+  end
+
+  defp feedback_email_details(reviewed) do
+    %{
+      "repeat_ayah_from" => reviewed.repeat_ayah_from,
+      "repeat_ayah_to" => reviewed.repeat_ayah_to,
+      "repeat_instruction" => reviewed.repeat_instruction,
+      "repeat_due_date" => reviewed.repeat_due_date,
+      "has_tutor_audio" =>
+        is_binary(reviewed.tutor_audio_path) and reviewed.tutor_audio_path != ""
+    }
   end
 
   defp disconnect_connection(connection_id, ownership) do

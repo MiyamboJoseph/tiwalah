@@ -75,8 +75,32 @@ if config_env() == :prod do
 
   smtp_relay = System.get_env("SMTP_RELAY") || raise "environment variable SMTP_RELAY is required"
   from_email = System.get_env("MAIL_FROM_EMAIL") || smtp_username
-  smtp_port = String.to_integer(System.get_env("SMTP_PORT") || "465")
+  smtp_port = String.to_integer(System.get_env("SMTP_PORT") || "587")
   smtp_uses_implicit_ssl? = smtp_port == 465
+
+  smtp_cacerts =
+    try do
+      :public_key.cacerts_get()
+    rescue
+      _ -> nil
+    catch
+      _, _ -> nil
+    end
+
+  smtp_tls_options = [
+    versions: [:"tlsv1.2", :"tlsv1.3"],
+    verify: :verify_peer,
+    server_name_indication: String.to_charlist(smtp_relay),
+    depth: 99,
+    customize_hostname_check: [
+      match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+    ]
+  ]
+
+  smtp_tls_options =
+    if is_list(smtp_cacerts) and smtp_cacerts != [],
+      do: Keyword.put(smtp_tls_options, :cacerts, smtp_cacerts),
+      else: smtp_tls_options
 
   config :app, App.Mailer,
     adapter: Swoosh.Adapters.SMTP,
@@ -87,23 +111,12 @@ if config_env() == :prod do
     ssl: smtp_uses_implicit_ssl?,
     tls: if(smtp_uses_implicit_ssl?, do: :never, else: :always),
     auth: :always,
-    tls_options: [
-      versions: [:"tlsv1.2", :"tlsv1.3"],
-      verify: :verify_peer,
-      cacerts: :public_key.cacerts_get(),
-      server_name_indication: String.to_charlist(smtp_relay),
-      depth: 99,
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ],
+    tls_options: smtp_tls_options,
     sockopts: [
       :binary,
       packet: :line,
       keepalive: true,
       active: false,
-      verify: :verify_peer,
-      cacerts: :public_key.cacerts_get(),
       server_name_indication: String.to_charlist(smtp_relay),
       depth: 99,
       customize_hostname_check: [

@@ -164,6 +164,8 @@ defmodule AppWeb.RecitationComponents do
   attr :allow_show_all, :boolean, default: false
   attr :show_all, :boolean, default: false
   attr :on_show_all, :string, default: nil
+  attr :word_by_word, :map, default: %{}
+  attr :reciter_audio, :map, default: %{}
 
   def quran_passage(assigns) do
     assigns = assign_passage_page(assigns)
@@ -221,6 +223,38 @@ defmodule AppWeb.RecitationComponents do
           >
             {verse.translation}
           </p>
+          <details :if={Map.get(@word_by_word, verse.number, []) != []} class="mt-4">
+            <summary class="cursor-pointer text-sm font-semibold text-emerald-800">
+              Study word by word
+            </summary>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span
+                :for={word <- Map.get(@word_by_word, verse.number, [])}
+                class="rounded-lg bg-emerald-50 px-3 py-2 text-center"
+              >
+                <span dir="rtl" lang="ar" class="block font-serif text-lg text-emerald-950">
+                  {word.arabic}
+                </span>
+                <span :if={word.transliteration} class="mt-1 block text-xs text-stone-600">
+                  {word.transliteration}
+                </span>
+                <span :if={word.translation} class="mt-1 block text-xs text-stone-500">
+                  {word.translation}
+                </span>
+              </span>
+            </div>
+          </details>
+          <div
+            :if={clip = Map.get(@reciter_audio, verse.number)}
+            class="mt-4 rounded-lg bg-emerald-50 p-3"
+          >
+            <p class="mb-2 text-xs font-semibold text-emerald-900">
+              Listen to {reciter_name(clip)} recite this āyah
+            </p>
+            <audio controls preload="none" class="w-full" src={clip.url}>
+              Your browser does not support audio playback.
+            </audio>
+          </div>
         </article>
       </div>
       <.pagination
@@ -234,6 +268,45 @@ defmodule AppWeb.RecitationComponents do
     </section>
     """
   end
+
+  attr :dua, :any, default: nil
+  attr :hijri_date, :any, default: nil
+
+  def practice_context(assigns) do
+    hijri_date = result_value(assigns.hijri_date)
+    dua = result_value(assigns.dua)
+
+    assigns =
+      assigns
+      |> assign(hijri_date: hijri_date, dua: dua)
+
+    ~H"""
+    <section
+      :if={@dua || @hijri_date}
+      class="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-5"
+    >
+      <p :if={@hijri_date} class="text-sm font-semibold text-amber-900">{@hijri_date}</p>
+      <div :if={@dua} class="mt-3">
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Before you begin</p>
+        <p class="mt-1 font-semibold text-emerald-950">{@dua.title}</p>
+        <p dir="rtl" lang="ar" class="mt-3 font-serif text-xl leading-9 text-emerald-950">
+          {@dua.arabic}
+        </p>
+        <p :if={@dua.transliteration} class="mt-2 text-sm italic text-stone-600">
+          {@dua.transliteration}
+        </p>
+        <p :if={@dua.translation} class="mt-1 text-sm text-stone-600">{@dua.translation}</p>
+        <p :if={@dua.source} class="mt-2 text-xs text-stone-500">Source: {@dua.source}</p>
+      </div>
+    </section>
+    """
+  end
+
+  # UmmahAPI calls return {:ok, value}; components should receive only values that
+  # Phoenix.HTML.Safe can render. Failed or still-unavailable requests stay hidden.
+  defp result_value({:ok, value}), do: value
+  defp result_value(value) when is_binary(value) or is_map(value), do: value
+  defp result_value(_), do: nil
 
   attr :page, :integer, required: true
   attr :total_pages, :integer, required: true
@@ -352,4 +425,7 @@ defmodule AppWeb.RecitationComponents do
     </div>
     """
   end
+
+  defp reciter_name(%{reciter: reciter}) when is_binary(reciter), do: reciter
+  defp reciter_name(_clip), do: "the reference reciter"
 end

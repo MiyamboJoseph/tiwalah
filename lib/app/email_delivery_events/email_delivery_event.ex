@@ -6,7 +6,7 @@ defmodule App.EmailDeliveryEvents.EmailDeliveryEvent do
     field :oban_job_id, :integer
     field :event_type, :string
     field :recipient, :string
-    field :status, Ecto.Enum, values: [:sent, :failed]
+    field :status, Ecto.Enum, values: [:queued, :local, :sent, :failed]
     field :last_error, :string
     field :sent_at, :utc_datetime
     belongs_to :user, App.Accounts.User
@@ -25,7 +25,7 @@ defmodule App.EmailDeliveryEvents.EmailDeliveryEvent do
       :sent_at
     ])
     |> validate_required([:oban_job_id, :event_type, :recipient, :status])
-    |> validate_inclusion(:status, [:sent, :failed])
+    |> validate_inclusion(:status, [:queued, :local, :sent, :failed])
     |> unique_constraint(:oban_job_id)
   end
 end

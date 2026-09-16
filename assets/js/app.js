@@ -201,11 +201,58 @@ const AudioRecorder = {
   },
 }
 
+const LocationPicker = {
+  mounted() {
+    const button = this.el.querySelector("[data-use-location]")
+    const status = this.el.querySelector("[data-location-status]")
+    const latitude = this.el.querySelector("[data-latitude]")
+    const longitude = this.el.querySelector("[data-longitude]")
+
+    if (!button || !latitude || !longitude) return
+
+    button.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        status.textContent = "Location is unavailable in this browser. You can still use normal reminders."
+        return
+      }
+
+      button.disabled = true
+      status.textContent = "Requesting your location…"
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          // Prayer times do not require a home-level GPS position. Keeping only
+          // two decimal places provides a city/neighbourhood approximation.
+          latitude.value = position.coords.latitude.toFixed(2)
+          longitude.value = position.coords.longitude.toFixed(2)
+
+          ;[latitude, longitude].forEach(input => {
+            input.dispatchEvent(new Event("input", {bubbles: true}))
+            input.dispatchEvent(new Event("change", {bubbles: true}))
+          })
+
+          status.textContent = "Approximate location saved. Due-practice reminders will arrive shortly after Maghrib."
+          button.textContent = "Approximate location saved"
+        },
+        error => {
+          const message = error.code === error.PERMISSION_DENIED
+            ? "Location permission was not granted. You can continue with normal reminders."
+            : "We could not determine your location. You can continue with normal reminders."
+
+          status.textContent = message
+          button.disabled = false
+        },
+        {enableHighAccuracy: false, timeout: 10_000, maximumAge: 86_400_000},
+      )
+    })
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, AudioRecorder},
+  hooks: {...colocatedHooks, AudioRecorder, LocationPicker},
 })
 
 // Show progress bar on live navigation and form submits

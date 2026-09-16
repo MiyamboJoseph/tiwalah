@@ -2,6 +2,7 @@ defmodule AppWeb.DashboardLive do
   use AppWeb, :live_view
 
   alias App.Recitations
+  alias App.UmmahApi.Learning
 
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
@@ -9,7 +10,12 @@ defmodule AppWeb.DashboardLive do
     case scope.user.role do
       :student ->
         if connected?(socket), do: Recitations.subscribe_student(scope.user.id)
-        {:ok, load_dashboard(socket)}
+
+        {:ok,
+         socket
+         |> assign(daily_dua: nil, hijri_date: nil, prayer_times: :loading)
+         |> load_dashboard()
+         |> load_learning_context()}
 
       :tutor ->
         {:ok, push_navigate(socket, to: ~p"/tutor")}
@@ -22,6 +28,21 @@ defmodule AppWeb.DashboardLive do
   def handle_info({:recitation_changed, _event, _assignment_id}, socket) do
     {:noreply, load_dashboard(socket)}
   end
+
+  def handle_info({:student_learning_context_loaded, dua, hijri_date, prayer_times}, socket) do
+    {:noreply,
+     assign(socket,
+       daily_dua: result_value(dua),
+       hijri_date: result_value(hijri_date),
+       prayer_times: result_value(prayer_times) || %{}
+     )}
+  end
+
+  # The shared notification-badge hook normally consumes these messages. This
+  # defensive handler also keeps an already-mounted dashboard safe during a
+  # code reload or if another hook forwards the notification event.
+  def handle_info({:notification_created, _notification_id}, socket), do: {:noreply, socket}
+  def handle_info({:notification_read, _notification_id}, socket), do: {:noreply, socket}
 
   def handle_event("paginate_assignments", %{"page" => page}, socket) do
     {:noreply, load_dashboard(socket, page)}
@@ -126,23 +147,91 @@ defmodule AppWeb.DashboardLive do
           Practice with care, submit with confidence, and grow with every correction.
         </p>
       </section>
+      <.assigned_recitations
+        assignments={@assignments}
+        assignment_counts={@assignment_counts}
+        page={@page}
+        total_pages={@total_pages}
+      />
       <section class="grid gap-4 sm:grid-cols-3">
         <.metric title="Active portions" value={@assignment_counts.active} icon="hero-book-open" />
         <.metric title="Ready to record" value={@pending} icon="hero-microphone" />
         <.metric title="Approved" value={@reviewed} icon="hero-check-badge" />
       </section>
+      <section class="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+        <article class="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-5 shadow-sm">
+          <p :if={@hijri_date} class="text-sm font-semibold text-amber-900">{@hijri_date}</p>
+          <div :if={@daily_dua} class={if(@hijri_date, do: "mt-3", else: nil)}>
+            <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-700">Duʿā for today</p>
+            <p class="mt-2 font-semibold text-emerald-950">{@daily_dua.title}</p>
+            <p dir="rtl" lang="ar" class="mt-3 font-serif text-xl leading-9 text-emerald-950">
+              {@daily_dua.arabic}
+            </p>
+            <p :if={@daily_dua.translation} class="mt-2 text-sm leading-6 text-stone-700">
+              {@daily_dua.translation}
+            </p>
+            <p :if={@daily_dua.source} class="mt-2 text-xs text-stone-500">
+              Source: {@daily_dua.source}
+            </p>
+          </div>
+          <p :if={!@hijri_date && !@daily_dua} class="text-sm text-stone-600">
+            Daily learning context is unavailable right now. Please try again shortly.
+          </p>
+        </article>
+        <article class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200">
+          <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-700">
+            Today’s prayer times
+          </p>
+          <p class="mt-1 text-sm text-stone-600 dark:text-stone-300">
+            Local times based on your saved approximate reminder location.
+          </p>
+          <div
+            :if={is_map(@prayer_times) && map_size(@prayer_times) > 0}
+            class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3"
+          >
+            <div
+              :for={prayer <- prayer_order()}
+              :if={@prayer_times[prayer]}
+              class="rounded-xl bg-emerald-50 p-3 text-center"
+            >
+              <p class="text-xs font-semibold uppercase tracking-wide text-stone-600">
+                {prayer_label(prayer)}
+              </p>
+              <p class="mt-1 text-lg font-bold text-emerald-950">{@prayer_times[prayer]}</p>
+            </div>
+          </div>
+          <p :if={@prayer_times == :loading} class="mt-4 text-sm text-stone-500">
+            Loading prayer times…
+          </p>
+          <div
+            :if={@prayer_times == %{}}
+            class="mt-4 rounded-xl bg-stone-50 p-4 text-sm text-stone-600 dark:bg-base-300 dark:text-stone-300"
+          >
+            Save an approximate location to see your local prayer times and receive Maghrib-aware practice reminders.
+            <.link
+              navigate={~p"/users/settings"}
+              class="ml-1 font-semibold text-emerald-800 hover:underline"
+            >
+              Set location
+            </.link>
+          </div>
+        </article>
+      </section>
       <section class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200">
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Find a teacher</p>
+            <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">
+              {if @active_tutors == [], do: "Find a teacher", else: "Teacher directory"}
+            </p>
             <h2 class="mt-1 font-serif text-2xl font-bold text-emerald-950 dark:text-emerald-100">
-              Request Qur’an guidance
+              {if @active_tutors == [], do: "Request Qur’an guidance", else: "Find another teacher"}
             </h2>
             <p class="mt-1 text-sm text-stone-600 dark:text-stone-300">
-              Choose a tutor and send a learning request. They must accept before any portion is assigned.
+              Choose a verified tutor and send a learning request. They must accept before any portion is assigned.
             </p>
           </div>
           <.form
+            :if={@tutor_directory != []}
             for={@tutor_request_form}
             phx-change="select_tutor"
             phx-submit="request_tutor"
@@ -156,10 +245,7 @@ defmodule AppWeb.DashboardLive do
               options={Enum.map(@tutor_directory, &{tutor_option(&1), &1.id})}
               required
             />
-            <.button
-              disabled={@tutor_directory == []}
-              class="mt-3 w-full bg-emerald-800 text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <.button class="mt-3 w-full bg-emerald-800 text-white hover:bg-emerald-900">
               Request to learn
             </.button>
           </.form>
@@ -200,8 +286,15 @@ defmodule AppWeb.DashboardLive do
             {@selected_tutor.tutor_bio}
           </p>
         </article>
-        <p :if={@tutor_directory == []} class="mt-4 text-sm text-stone-600 dark:text-stone-300">
-          No verified tutors are available yet. Please check again soon.
+        <p
+          :if={@tutor_directory == []}
+          class="mt-4 rounded-xl bg-stone-50 p-4 text-sm text-stone-600 dark:bg-base-300 dark:text-stone-300"
+        >
+          {if @active_tutors == [] do
+            "No verified tutors are available yet. Please check again soon."
+          else
+            "You are already connected to every verified tutor currently available."
+          end}
         </p>
       </section>
       <section :if={@requested_tutors != []} class="rounded-2xl border border-sky-200 bg-sky-50 p-5">
@@ -328,63 +421,82 @@ defmodule AppWeb.DashboardLive do
           </div>
         </div>
       </section>
-      <section>
-        <div class="mb-5 flex items-end justify-between">
-          <div>
-            <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your practice</p>
-            <h2 class="mt-1 font-serif text-2xl font-bold text-emerald-950 dark:text-emerald-100">
-              Assigned recitations
-            </h2>
-          </div>
-        </div>
-        <div
-          :if={@assignments == []}
-          class="rounded-2xl border border-dashed border-emerald-900/20 bg-white p-10 text-center text-stone-600 dark:bg-base-200"
-        >
-          Your tutor has not assigned a portion yet. Your next recitation will appear here.
-        </div>
-        <div :if={@assignments != []} class="grid gap-4 lg:grid-cols-2">
-          <.assignment_card :for={assignment <- @assignments} assignment={assignment}>
-            <:detail>
-              <.feedback_categories
-                label="Correction areas"
-                categories={latest_feedback_categories(assignment)}
-              />
-              <.repeat_guidance
-                :if={assignment.status == :repeat_required}
-                submission={latest_repeat_submission(assignment)}
-                audio_src={~p"/recitations/feedback-audio/#{latest_repeat_submission(assignment).id}"}
-              />
-            </:detail>
-            <:action>
-              <%= if assignment.status in [:assigned, :repeat_required] do %>
-                <.link
-                  navigate={~p"/recitations/new/#{assignment.id}"}
-                  class="font-semibold text-emerald-800 hover:underline"
-                >
-                  {if assignment.status == :repeat_required,
-                    do: "Record revised recitation →",
-                    else: "Record recitation →"}
-                </.link>
-              <% else %>
-                <.link
-                  navigate={~p"/recitations/#{assignment.id}"}
-                  class="font-semibold text-emerald-800 hover:underline"
-                >
-                  {assignment_action_label(assignment.status)} →
-                </.link>
-              <% end %>
-            </:action>
-          </.assignment_card>
-        </div>
-        <.pagination
-          page={@page}
-          total_pages={@total_pages}
-          total_entries={@assignment_counts.total}
-          on_change="paginate_assignments"
-        />
-      </section>
     </Layouts.app>
+    """
+  end
+
+  attr :assignments, :list, required: true
+  attr :assignment_counts, :map, required: true
+  attr :page, :integer, required: true
+  attr :total_pages, :integer, required: true
+
+  defp assigned_recitations(assigns) do
+    ~H"""
+    <section>
+      <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">Your practice</p>
+          <h2 class="mt-1 font-serif text-2xl font-bold text-emerald-950 dark:text-emerald-100">
+            Continue your recitation
+          </h2>
+        </div>
+        <p :if={@assignments != []} class="text-sm font-semibold text-emerald-800">
+          Choose a portion below to continue.
+        </p>
+      </div>
+      <div
+        :if={@assignments == []}
+        class="rounded-2xl border border-dashed border-emerald-900/20 bg-white p-10 text-center text-stone-600 dark:bg-base-200"
+      >
+        Your tutor has not assigned a portion yet. Your next recitation will appear here.
+      </div>
+      <div
+        :if={@assignments != []}
+        class={[
+          "grid gap-4",
+          if(length(@assignments) == 1, do: "grid-cols-1", else: "lg:grid-cols-2")
+        ]}
+      >
+        <.assignment_card :for={assignment <- @assignments} assignment={assignment}>
+          <:detail>
+            <.feedback_categories
+              label="Correction areas"
+              categories={latest_feedback_categories(assignment)}
+            />
+            <.repeat_guidance
+              :if={assignment.status == :repeat_required}
+              submission={latest_repeat_submission(assignment)}
+              audio_src={~p"/recitations/feedback-audio/#{latest_repeat_submission(assignment).id}"}
+            />
+          </:detail>
+          <:action>
+            <%= if assignment.status in [:assigned, :repeat_required] do %>
+              <.link
+                navigate={~p"/recitations/new/#{assignment.id}"}
+                class="font-semibold text-emerald-800 hover:underline"
+              >
+                {if assignment.status == :repeat_required,
+                  do: "Record revised recitation →",
+                  else: "Record recitation →"}
+              </.link>
+            <% else %>
+              <.link
+                navigate={~p"/recitations/#{assignment.id}"}
+                class="font-semibold text-emerald-800 hover:underline"
+              >
+                {assignment_action_label(assignment.status)} →
+              </.link>
+            <% end %>
+          </:action>
+        </.assignment_card>
+      </div>
+      <.pagination
+        page={@page}
+        total_pages={@total_pages}
+        total_entries={@assignment_counts.total}
+        on_change="paginate_assignments"
+      />
+    </section>
     """
   end
 
@@ -449,6 +561,42 @@ defmodule AppWeb.DashboardLive do
   defp tutor_verification_label(:pending), do: "Credentials submitted · verification pending"
   defp tutor_verification_label(:rejected), do: "Verification needs attention"
   defp tutor_verification_label(_status), do: "Tutor profile"
+
+  defp prayer_label(:fajr), do: "Fajr"
+  defp prayer_label(:sunrise), do: "Sunrise"
+  defp prayer_label(:dhuhr), do: "Dhuhr"
+  defp prayer_label(:asr), do: "Asr"
+  defp prayer_label(:maghrib), do: "Maghrib"
+  defp prayer_label(:isha), do: "Isha"
+
+  defp prayer_order, do: [:fajr, :sunrise, :dhuhr, :asr, :maghrib, :isha]
+
+  defp result_value({:ok, value}), do: value
+  defp result_value(_), do: nil
+
+  defp load_learning_context(socket) do
+    if connected?(socket) do
+      parent = self()
+      user = socket.assigns.current_scope.user
+
+      Task.start(fn ->
+        prayer_times =
+          if is_number(user.latitude) and is_number(user.longitude) do
+            Learning.prayer_times(user.latitude, user.longitude, user.time_zone)
+          else
+            {:error, :location_not_set}
+          end
+
+        send(
+          parent,
+          {:student_learning_context_loaded, Learning.daily_dua(), Learning.hijri_date(),
+           prayer_times}
+        )
+      end)
+    end
+
+    socket
+  end
 
   defp load_dashboard(socket, page \\ nil) do
     page = page || Map.get(socket.assigns, :page, 1)

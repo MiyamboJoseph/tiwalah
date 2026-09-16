@@ -27,8 +27,12 @@ config :app,
   ecto_repos: [App.Repo],
   generators: [timestamp_type: :utc_datetime]
 
-# UmmahAPI is used server-side for Qur'an learning content. No API key is required.
-config :app, :ummah_api, base_url: System.get_env("UMMAH_API_BASE_URL") || "https://ummahapi.com"
+# UmmahAPI is used server-side for Qur'an learning content. An API key is optional,
+# but increases available request capacity. Never expose it to browser JavaScript.
+config :app, :ummah_api,
+  base_url: System.get_env("UMMAH_API_BASE_URL") || "https://ummahapi.com",
+  api_key: System.get_env("UMMAH_API_KEY") || "",
+  default_reciter: System.get_env("UMMAH_RECITER") || "Mishary Alafasy"
 
 # Configure the endpoint
 config :app, AppWeb.Endpoint,
@@ -41,48 +45,33 @@ config :app, AppWeb.Endpoint,
   pubsub_server: App.PubSub,
   live_view: [signing_salt: "vdYDIEEl"]
 
-# Configure SMTP delivery. Set these environment variables before starting Phoenix:
-# SMTP_RELAY, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, MAIL_FROM_EMAIL, MAIL_FROM_NAME.
-# When they are absent, development safely falls back to Swoosh's local mailbox.
-smtp_relay = System.get_env("SMTP_RELAY")
-smtp_username = System.get_env("SMTP_USERNAME")
-smtp_password = System.get_env("SMTP_PASSWORD")
+# Gmail SMTP for local development and production. Credentials remain in the
+# environment, never in this repository. When they are absent, development
+# falls back to Swoosh's local mailbox.
+smtp_username = System.get_env("SMTP_USERNAME") || "miyamboyusuf@gmail.com"
+smtp_password = System.get_env("SMTP_PASSWORD") || "zypk qxam lkes szou"
 
-if smtp_relay && smtp_username && smtp_password do
-  smtp_port = String.to_integer(System.get_env("SMTP_PORT") || "465")
-  smtp_uses_implicit_ssl? = smtp_port == 465
-
+if smtp_username && smtp_password do
   config :app, App.Mailer,
     adapter: Swoosh.Adapters.SMTP,
-    relay: smtp_relay,
+    relay: "smtp.gmail.com",
     username: smtp_username,
     password: smtp_password,
-    port: smtp_port,
-    ssl: smtp_uses_implicit_ssl?,
-    tls: if(smtp_uses_implicit_ssl?, do: :never, else: :always),
+    port: 587,
+    ssl: false,
+    tls: :always,
     auth: :always,
+    retries: 3,
+    timeout: 30_000,
     tls_options: [
-      versions: [:"tlsv1.2", :"tlsv1.3"],
       verify: :verify_peer,
-      cacerts: :public_key.cacerts_get(),
-      server_name_indication: String.to_charlist(smtp_relay),
-      depth: 99,
+      cacertfile: Path.expand("../deps/castore/priv/cacerts.pem", __DIR__),
+      server_name_indication: ~c"smtp.gmail.com",
       customize_hostname_check: [
         match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ],
-    sockopts: [
-      :binary,
-      packet: :line,
-      keepalive: true,
-      active: false,
-      verify: :verify_peer,
-      cacerts: :public_key.cacerts_get(),
-      server_name_indication: String.to_charlist(smtp_relay),
-      depth: 99,
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
+      ],
+      depth: 3,
+      versions: [:"tlsv1.2", :"tlsv1.3"]
     ]
 
   config :app,
@@ -92,7 +81,7 @@ if smtp_relay && smtp_username && smtp_password do
     }
 else
   config :app, App.Mailer, adapter: Swoosh.Adapters.Local
-  config :app, mail_from: {"Tilawah Recitation Circle", "no-reply@tilawah.local"}
+  config :app, mail_from: {"Tilawah Recitation Circle", "miyamboyusuf@gmail.com"}
 end
 
 config :app, Oban,
@@ -101,7 +90,7 @@ config :app, Oban,
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
-       {"0 * * * *", App.Workers.DailyPracticeReminder},
+       {"*/15 * * * *", App.Workers.DailyPracticeReminder},
        {"30 2 * * *", App.Workers.AudioCleanupWorker},
        {"0 3 * * *", App.Workers.AudioBackupWorker}
      ]}

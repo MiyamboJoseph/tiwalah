@@ -3,6 +3,7 @@ defmodule AppWeb.StudentRecitationLive.Show do
 
   alias App.Recitations
   alias App.UmmahApi.Quran, as: UmmahQuran
+  alias App.UmmahApi.Learning
 
   def mount(%{"assignment_id" => assignment_id}, _session, socket) do
     scope = socket.assigns.current_scope
@@ -13,7 +14,12 @@ defmodule AppWeb.StudentRecitationLive.Show do
 
         {:ok,
          socket
-         |> assign(assignment: assignment, quran_passage: :loading, passage_page: 1)
+         |> assign(
+           assignment: assignment,
+           quran_passage: :loading,
+           passage_page: 1,
+           reciter_audio: %{}
+         )
          |> load_passage(assignment)}
 
       {:tutor, _} ->
@@ -35,10 +41,16 @@ defmodule AppWeb.StudentRecitationLive.Show do
   end
 
   def handle_info({:quran_passage_loaded, result}, socket),
-    do: {:noreply, assign(socket, quran_passage: result)}
+    do: {:noreply, socket |> assign(quran_passage: result) |> load_reciter_audio()}
+
+  def handle_info({:reciter_audio_loaded, clips}, socket),
+    do: {:noreply, assign(socket, reciter_audio: clips)}
 
   def handle_event("paginate_passage", %{"page" => page}, socket) do
-    {:noreply, assign(socket, passage_page: page_number(page))}
+    {:noreply,
+     socket
+     |> assign(passage_page: page_number(page), reciter_audio: %{})
+     |> load_reciter_audio()}
   end
 
   def render(assigns) do
@@ -65,6 +77,7 @@ defmodule AppWeb.StudentRecitationLive.Show do
             passage={@quran_passage}
             page={@passage_page}
             on_page_change="paginate_passage"
+            reciter_audio={@reciter_audio}
           />
         </div>
         <section class="mt-6 space-y-5">
@@ -132,4 +145,24 @@ defmodule AppWeb.StudentRecitationLive.Show do
       _ -> 1
     end
   end
+
+  defp load_reciter_audio(
+         %{assigns: %{quran_passage: {:ok, passage}, assignment: assignment}} = socket
+       ) do
+    if connected?(socket) do
+      parent = self()
+      page = socket.assigns.passage_page
+      verses = Enum.slice(passage.verses, 5 * (page - 1), 5)
+
+      Task.start(fn ->
+        with {:ok, surah_number} <- App.Quran.surah_number(assignment.surah_name) do
+          send(parent, {:reciter_audio_loaded, Learning.reciter_audio(surah_number, verses)})
+        end
+      end)
+    end
+
+    socket
+  end
+
+  defp load_reciter_audio(socket), do: socket
 end

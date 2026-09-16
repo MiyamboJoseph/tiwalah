@@ -4,6 +4,7 @@ defmodule AppWeb.TutorLive.Review do
   alias App.Recitations
   alias App.Recitations.AudioStorage
   alias App.Recitations.Submission
+  alias App.UmmahApi.Learning
   alias App.UmmahApi.Quran, as: UmmahQuran
 
   def mount(%{"assignment_id" => assignment_id}, _session, socket) do
@@ -28,7 +29,8 @@ defmodule AppWeb.TutorLive.Review do
              repeat_submission_ids: repeat_submission_ids(assignment),
              quran_passage: :loading,
              passage_page: 1,
-             show_all_passage: false
+             show_all_passage: false,
+             word_by_word: %{}
            )
            |> allow_upload(:tutor_audio,
              accept: ~w(.webm .mp3 .wav .m4a .ogg),
@@ -62,10 +64,15 @@ defmodule AppWeb.TutorLive.Review do
   end
 
   def handle_info({:quran_passage_loaded, result}, socket),
-    do: {:noreply, assign(socket, quran_passage: result)}
+    do: {:noreply, socket |> assign(quran_passage: result) |> load_words()}
+
+  def handle_info({:word_by_word_loaded, words}, socket),
+    do: {:noreply, assign(socket, word_by_word: words)}
 
   def handle_event("paginate_passage", %{"page" => page}, socket),
-    do: {:noreply, assign(socket, passage_page: page_number(page))}
+    do:
+      {:noreply,
+       socket |> assign(passage_page: page_number(page), word_by_word: %{}) |> load_words()}
 
   def handle_event("toggle_passage_view", _params, socket),
     do:
@@ -168,6 +175,7 @@ defmodule AppWeb.TutorLive.Review do
           allow_show_all
           show_all={@show_all_passage}
           on_show_all="toggle_passage_view"
+          word_by_word={@word_by_word}
         />
       </div>
       <section class="mt-6 space-y-5">
@@ -392,6 +400,24 @@ defmodule AppWeb.TutorLive.Review do
 
     socket
   end
+
+  defp load_words(%{assigns: %{quran_passage: {:ok, passage}, assignment: assignment}} = socket) do
+    if connected?(socket) do
+      parent = self()
+      page = socket.assigns.passage_page
+      verses = Enum.slice(passage.verses, 5 * (page - 1), 5)
+
+      Task.start(fn ->
+        with {:ok, surah_number} <- App.Quran.surah_number(assignment.surah_name) do
+          send(parent, {:word_by_word_loaded, Learning.word_by_word(surah_number, verses)})
+        end
+      end)
+    end
+
+    socket
+  end
+
+  defp load_words(socket), do: socket
 
   defp page_number(page) do
     case Integer.parse(page) do

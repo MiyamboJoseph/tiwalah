@@ -86,6 +86,22 @@ defmodule App.Accounts do
     User.registration_changeset(user, attrs, opts)
   end
 
+  def change_user_practice_location(user, attrs \\ %{}) do
+    User.practice_location_changeset(user, attrs)
+  end
+
+  def update_user_practice_location(user, attrs) do
+    user
+    |> User.practice_location_changeset(attrs)
+    |> Repo.update()
+  end
+
+  def clear_user_practice_location(user) do
+    user
+    |> Ecto.Changeset.change(latitude: nil, longitude: nil)
+    |> Repo.update()
+  end
+
   @doc "Marks a tutor profile after a manual credential review by trusted staff."
   def set_tutor_verification(%User{role: :tutor} = user, status)
       when status in [:pending, :verified, :rejected] do

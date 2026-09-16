@@ -4,12 +4,12 @@ defmodule App.EmailTemplates do
   def auth(:confirmation, user, url),
     do:
       message(
-        "Confirm your Tilawah account",
+        "Confirm your Tilawah email address",
         greeting(user),
-        "Welcome to Tilawah. Confirm your email address to activate your account and begin your recitation journey.",
+        "Welcome to Tilawah. Please confirm this email address to finish setting up your account and keep it secure.",
         "Confirm my account",
         url,
-        "If you did not create this account, you can safely ignore this email."
+        "If you did not create a Tilawah account, you can safely ignore this email."
       )
 
   def auth(:magic_link, user, url),
@@ -17,7 +17,7 @@ defmodule App.EmailTemplates do
       message(
         "Your secure Tilawah sign-in link",
         greeting(user),
-        "Use this secure link to sign in to Tilawah. It is for one-time use only.",
+        "Use this secure, one-time link to sign in to your Tilawah account. Do not forward this email or share the link with anyone.",
         "Sign in to Tilawah",
         url,
         "If you did not request this sign-in link, you can safely ignore this email."
@@ -28,7 +28,7 @@ defmodule App.EmailTemplates do
       message(
         "Confirm your new email address",
         greeting(user),
-        "Confirm this new email address to complete the change on your Tilawah account.",
+        "Confirm this new email address to complete the change to your Tilawah account. Until you confirm it, your existing email remains on the account.",
         "Confirm new email",
         url,
         "If you did not request this change, please secure your account and contact support."
@@ -38,10 +38,30 @@ defmodule App.EmailTemplates do
     message(
       "A recitation is ready for your review",
       "As-salāmu ʿalaykum,",
-      "#{args["student"]} submitted “#{args["title"]}”. Listen carefully and share clear, kind guidance.",
+      "#{value(args, "student", "A student")} submitted “#{value(args, "title", "a recitation")}”. Listen to the recording, then approve it or request a repeat with clear, kind guidance.",
       "Review recitation",
       app_url("/tutor"),
       "You are receiving this because a student submitted a recitation in your Tilawah circle."
+    )
+  end
+
+  def notification(:welcome, args) do
+    {portal_path, next_step} =
+      if args["role"] == "tutor" do
+        {"/tutor",
+         "Complete your teaching profile and wait for its verification before students can request to learn with you."}
+      else
+        {"/dashboard",
+         "Choose a verified Qur’an teacher, send a learning request, and begin once they accept it."}
+      end
+
+    message(
+      "Welcome to Tilawah",
+      "As-salāmu ʿalaykum, #{value(args, "name", "")},",
+      "Your Tilawah account is ready. #{next_step}",
+      "Open Tilawah",
+      app_url(portal_path),
+      "May Allah place barakah in your learning and teaching."
     )
   end
 
@@ -52,12 +72,16 @@ defmodule App.EmailTemplates do
         else: {"marked for another attempt", "View repeat plan"}
 
     message(
-      "Your tutor reviewed “#{args["title"]}”",
+      "Your tutor reviewed “#{value(args, "title", "your recitation")}”",
       "As-salāmu ʿalaykum,",
-      "Your recitation was #{decision}.\n\nTutor guidance:\n#{args["feedback"]}",
+      "Your recitation was #{decision}.\n\nTutor guidance:\n#{feedback_text(args)}#{repeat_plan(args)}",
       action,
       app_url("/dashboard"),
-      "Keep practising with patience—each sincere attempt is part of your progress."
+      if(args["status"] == "reviewed",
+        do: "Keep practising with patience—each sincere attempt is part of your progress.",
+        else:
+          "Open your repeat plan for the focus āyāt, instructions, deadline, and any audio example from your tutor."
+      )
     )
   end
 
@@ -65,7 +89,7 @@ defmodule App.EmailTemplates do
     message(
       "Your recitation is due tomorrow",
       "As-salāmu ʿalaykum,",
-      "Your assigned recitation, “#{args["title"]}”, is due tomorrow. Set aside a quiet time to practise and submit it.",
+      "Your assigned recitation, “#{value(args, "title", "your practice")}”, is due tomorrow.#{portion_details(args)} Set aside a quiet time to practise and submit your recording.",
       "Open my practice",
       app_url("/dashboard"),
       "If you need help, contact your tutor through Tilawah."
@@ -76,10 +100,10 @@ defmodule App.EmailTemplates do
     message(
       "New student learning request",
       "As-salāmu ʿalaykum,",
-      "#{args["requester"]} would like to join your recitation circle. Review the request before accepting.",
+      "#{value(args, "requester", "A student")} would like to learn with you. Review their request, then accept only if you have room to guide them with care.",
       "Review request",
       app_url("/tutor"),
-      "Only accept students you are able to guide with care."
+      "Accepting creates a private student–tutor connection. You can decline if your circle is full or the fit is not right."
     )
   end
 
@@ -87,7 +111,7 @@ defmodule App.EmailTemplates do
     message(
       "A tutor invited you to learn",
       "As-salāmu ʿalaykum,",
-      "#{args["requester"]} invited you to join their Tilawah recitation circle. Review the invitation before accepting.",
+      "#{value(args, "requester", "A tutor")} invited you to join their Tilawah recitation circle. Review the invitation before accepting.",
       "Review invitation",
       app_url("/dashboard"),
       "You remain in control of which tutor invitations you accept."
@@ -98,10 +122,10 @@ defmodule App.EmailTemplates do
     message(
       "Your Tilawah connection is active",
       "As-salāmu ʿalaykum,",
-      "#{args["counterpart"]} accepted your learning request. You can now begin your recitation journey together.",
+      "#{value(args, "counterpart", "Your tutor")} accepted your learning request. Your private learning connection is now active.",
       "Open my portal",
       app_url(args["portal_path"]),
-      "Your tutor will assign a focused portion when ready."
+      "Your tutor can now assign a focused portion. You will be notified when there is practice ready for you."
     )
   end
 
@@ -109,10 +133,10 @@ defmodule App.EmailTemplates do
     message(
       "Tilawah connection update",
       "As-salāmu ʿalaykum,",
-      "#{args["counterpart"]} was unable to accept the learning request at this time.",
-      args["action_label"],
-      app_url(args["portal_path"]),
-      "You may continue your recitation journey by reviewing the available options in Tilawah."
+      "#{value(args, "counterpart", "This person")} was unable to accept the learning request at this time.",
+      value(args, "action_label", "Open my portal"),
+      app_url(value(args, "portal_path", "/dashboard")),
+      "You can choose another available verified tutor from your Tilawah portal."
     )
   end
 
@@ -120,10 +144,10 @@ defmodule App.EmailTemplates do
     message(
       "A new recitation has been assigned",
       "As-salāmu ʿalaykum,",
-      "Your tutor assigned “#{args["title"]}”. Read the assigned āyāt, then record your best attempt when you are ready.",
+      "Your tutor assigned “#{value(args, "title", "a new recitation")}”.#{portion_details(args)} Read the assigned āyāt, practise in a quiet place, then record your best attempt when you are ready.",
       "Record recitation",
-      app_url(args["path"]),
-      "A careful, sincere attempt is the best place to begin."
+      app_url(value(args, "path", "/dashboard")),
+      "Your practice page includes the assigned Arabic text, translation, and any guidance from your tutor."
     )
   end
 
@@ -132,12 +156,12 @@ defmodule App.EmailTemplates do
       case args["status"] do
         "verified" ->
           {"Your tutor profile is verified",
-           "Your credentials have been reviewed and your tutor profile is now visible to students.",
+           "Your credentials have been reviewed and your tutor profile is now visible to students looking for guidance.",
            "Open tutor portal", "/tutor"}
 
         _ ->
           {"Your tutor profile needs attention",
-           "Your tutor profile was not approved yet. Review your profile details and contact the Tilawah administrator for guidance.",
+           "Your tutor profile was not approved at this time. Review your profile details and contact the Tilawah administrator if you need guidance.",
            "Open tutor portal", "/tutor"}
       end
 
@@ -155,6 +179,74 @@ defmodule App.EmailTemplates do
     do: "As-salāmu ʿalaykum, #{first_name},"
 
   defp greeting(_user), do: "As-salāmu ʿalaykum,"
+
+  defp value(args, key, fallback) do
+    case Map.get(args, key) do
+      value when is_binary(value) and value != "" -> value
+      value when is_integer(value) -> Integer.to_string(value)
+      _ -> fallback
+    end
+  end
+
+  defp feedback_text(args) do
+    case String.trim(value(args, "feedback", "")) do
+      "" -> "Your tutor has updated this recitation. Open your portal to see the next step."
+      feedback -> feedback
+    end
+  end
+
+  defp portion_details(args) do
+    case {value(args, "surah", ""), Map.get(args, "ayah_from"), Map.get(args, "ayah_to")} do
+      {surah, first, last} when surah != "" and is_integer(first) and is_integer(last) ->
+        due_date =
+          case formatted_date(Map.get(args, "due_date")) do
+            nil -> ""
+            date -> " It is due on #{date}."
+          end
+
+        " Your portion is #{surah}, āyah #{first}–#{last}.#{due_date}"
+
+      _ ->
+        ""
+    end
+  end
+
+  defp repeat_plan(args) do
+    if args["status"] == "repeat_required" do
+      focus =
+        case {Map.get(args, "repeat_ayah_from"), Map.get(args, "repeat_ayah_to")} do
+          {first, last} when is_integer(first) and is_integer(last) ->
+            "\n\nRepeat plan:\nFocus on āyah #{first}–#{last}."
+
+          _ ->
+            ""
+        end
+
+      instruction =
+        case value(args, "repeat_instruction", "") do
+          "" -> ""
+          text -> "\nPractice instruction: #{text}"
+        end
+
+      deadline =
+        case formatted_date(Map.get(args, "repeat_due_date")) do
+          nil -> ""
+          date -> "\nRevised deadline: #{date}"
+        end
+
+      audio =
+        if args["has_tutor_audio"] == true,
+          do: "\nAn audio example from your tutor is available on your practice page.",
+          else: ""
+
+      focus <> instruction <> deadline <> audio
+    else
+      ""
+    end
+  end
+
+  defp formatted_date(%Date{} = date), do: Calendar.strftime(date, "%d %b %Y")
+  defp formatted_date(_date), do: nil
 
   defp message(subject, greeting, body, cta_label, cta_url, footer) do
     %{
@@ -175,6 +267,7 @@ defmodule App.EmailTemplates do
     escaped = fn value -> value |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string() end
 
     """
+    <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent">#{escaped.(subject)} — Tilawah Recitation Circle</div>
     <div style="margin:0;padding:32px 16px;background:#f7f4ec;color:#173b2d;font-family:Arial,sans-serif">
       <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e7dfcf;border-radius:18px;overflow:hidden">
         <div style="padding:24px 32px;background:#043b2d;color:#fff8dc">
@@ -186,6 +279,7 @@ defmodule App.EmailTemplates do
           <p style="margin:0 0 16px;line-height:1.6">#{escaped.(greeting)}</p>
           <p style="margin:0;line-height:1.7">#{escaped_body}</p>
           <p style="margin:28px 0"><a href="#{escaped.(cta_url)}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#08745a;color:#ffffff;font-weight:700;text-decoration:none">#{escaped.(cta_label)}</a></p>
+          <p style="margin:-12px 0 24px;color:#66756c;font-size:12px;line-height:1.5">If the button does not open, copy this link into your browser:<br><a href="#{escaped.(cta_url)}" style="color:#08745a;word-break:break-word">#{escaped.(cta_url)}</a></p>
           <p style="margin:0;padding-top:18px;border-top:1px solid #e7dfcf;color:#66756c;font-size:13px;line-height:1.6">#{escaped.(footer)}</p>
         </div>
       </div>

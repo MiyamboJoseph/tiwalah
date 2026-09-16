@@ -5,6 +5,12 @@ defmodule App.EmailDeliveryEvents do
   alias App.EmailDeliveryEvents.EmailDeliveryEvent
   alias App.Repo
 
+  @doc """
+  Records an email job as soon as it enters Oban, without overwriting a result
+  that an exceptionally fast worker may have already recorded.
+  """
+  def record_queued(%Oban.Job{} = job), do: record(job, :queued)
+
   def record(%Oban.Job{id: job_id, args: args}, status, error \\ nil) do
     attrs = %{
       oban_job_id: job_id,
@@ -16,12 +22,29 @@ defmodule App.EmailDeliveryEvents do
       sent_at: if(status == :sent, do: DateTime.utc_now(:second), else: nil)
     }
 
-    %EmailDeliveryEvent{}
-    |> EmailDeliveryEvent.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: {:replace, [:status, :last_error, :sent_at, :updated_at]},
-      conflict_target: :oban_job_id
-    )
+    conflict_action =
+      if status == :queued,
+        do: :nothing,
+        else: {:replace, [:status, :last_error, :sent_at, :updated_at]}
+
+    case %EmailDeliveryEvent{}
+         |> EmailDeliveryEvent.changeset(attrs)
+         |> Repo.insert(
+           on_conflict: conflict_action,
+           conflict_target: :oban_job_id
+         ) do
+      {:ok, event} = result ->
+        Phoenix.PubSub.broadcast(
+          App.PubSub,
+          "notifications:#{event.user_id}",
+          {:email_delivery_recorded, event.id}
+        )
+
+        result
+
+      error ->
+        error
+    end
   end
 
   def recent(%Scope{user: user}, limit \\ 5) do

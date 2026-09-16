@@ -36,7 +36,9 @@ defmodule AppWeb.PageController do
       {"Who can access it",
        "Recordings are available only to the student who submitted them and the connected tutor responsible for the assignment."},
       {"Contact details",
-       "Your email and profile details are used to operate the service and approved learning relationships, not sold to third parties."}
+       "Your email and profile details are used to operate the service and approved learning relationships, not sold to third parties."},
+      {"Prayer reminder location",
+       "If you choose to enable prayer-aware reminders, Tilawah stores only an approximate latitude and longitude, not a location history. It sends those coordinates and your time zone to UmmahAPI only to calculate local prayer times. You can update or remove this location at any time in Account Settings."}
     ]
   end
 end

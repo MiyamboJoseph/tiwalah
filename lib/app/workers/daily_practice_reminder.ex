@@ -3,8 +3,9 @@ defmodule App.Workers.DailyPracticeReminder do
 
   import Ecto.Query
   alias App.Recitations.Assignment
+  alias App.UmmahApi.Learning
   alias App.Repo
-  alias App.Workers.EmailDeliveryWorker
+  alias App.Notifications
 
   @utc_offsets %{
     "Africa/Lagos" => 1,
@@ -22,18 +23,43 @@ defmodule App.Workers.DailyPracticeReminder do
           assignment.status in [:assigned, :repeat_required] and not is_nil(assignment.due_date),
         preload: [:student]
     )
-    |> Enum.filter(&due_tomorrow_in_student_time_zone?/1)
+    |> Enum.filter(&ready_for_reminder?/1)
     |> Enum.reduce_while(:ok, fn assignment, :ok ->
-      case enqueue_reminder(assignment) do
-        {:ok, _job} -> {:cont, :ok}
+      case Notifications.notify_reminder(
+             assignment.student.email,
+             assignment.student_id,
+             assignment.title,
+             %{
+               "surah" => assignment.surah_name,
+               "ayah_from" => assignment.ayah_from,
+               "ayah_to" => assignment.ayah_to,
+               "due_date" => assignment.due_date
+             }
+           ) do
+        {:ok, _email} -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  defp due_tomorrow_in_student_time_zone?(assignment) do
+  defp ready_for_reminder?(assignment) do
     now = local_now(assignment.student.time_zone)
-    now.hour == 7 and assignment.due_date == now |> DateTime.to_date() |> Date.add(1)
+    due_tomorrow? = assignment.due_date == now |> DateTime.to_date() |> Date.add(1)
+
+    due_tomorrow? and after_maghrib_or_fallback?(assignment.student, now)
+  end
+
+  defp after_maghrib_or_fallback?(student, now) do
+    with latitude when is_number(latitude) <- student.latitude,
+         longitude when is_number(longitude) <- student.longitude,
+         {:ok, maghrib} <-
+           Learning.maghrib_time(latitude, longitude, student.time_zone, DateTime.to_date(now)) do
+      minutes_since_midnight(now) in minutes_since_midnight(maghrib)..(minutes_since_midnight(
+                                                                         maghrib
+                                                                       ) + 14)
+    else
+      _ -> now.hour == 7 and now.minute < 15
+    end
   end
 
   defp local_now(time_zone) do
@@ -41,14 +67,6 @@ defmodule App.Workers.DailyPracticeReminder do
     DateTime.add(DateTime.utc_now(), offset * 3_600, :second)
   end
 
-  defp enqueue_reminder(assignment) do
-    %{
-      "type" => "reminder",
-      "recipient" => assignment.student.email,
-      "recipient_user_id" => assignment.student_id,
-      "title" => assignment.title
-    }
-    |> EmailDeliveryWorker.new(unique: [period: 86_400, fields: [:worker, :args]])
-    |> Oban.insert()
-  end
+  defp minutes_since_midnight(%DateTime{} = datetime), do: datetime.hour * 60 + datetime.minute
+  defp minutes_since_midnight(%Time{} = time), do: time.hour * 60 + time.minute
 end

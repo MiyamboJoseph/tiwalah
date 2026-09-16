@@ -5,6 +5,7 @@ defmodule AppWeb.UserLive.Registration do
 
   alias App.Accounts
   alias App.Accounts.User
+  alias App.Notifications
 
   @impl true
   def render(assigns) do
@@ -235,6 +236,43 @@ defmodule AppWeb.UserLive.Registration do
                 ]}
                 required
               />
+              <div
+                :if={
+                  (@step == 2 && @form[:role].value in ["student", :student]) ||
+                    (@step == 3 && @form[:role].value in ["tutor", :tutor])
+                }
+                id="registration-practice-location"
+                phx-hook="LocationPicker"
+                class="sm:col-span-2 rounded-xl border border-emerald-900/10 bg-emerald-50/50 p-3"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-emerald-950">Prayer-aware reminders</p>
+                    <p data-location-status class="mt-1 text-xs leading-5 text-stone-600">
+                      Optional: save an approximate location to calculate prayer times. It is shared with UmmahAPI only when calculating your due-practice reminder.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-use-location
+                    class="rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100"
+                  >
+                    Use approximate location
+                  </button>
+                </div>
+                <input
+                  type="hidden"
+                  name={@form[:latitude].name}
+                  value={@form[:latitude].value}
+                  data-latitude
+                />
+                <input
+                  type="hidden"
+                  name={@form[:longitude].name}
+                  value={@form[:longitude].value}
+                  data-longitude
+                />
+              </div>
 
               <div
                 :if={
@@ -500,7 +538,9 @@ defmodule AppWeb.UserLive.Registration do
 
   defp register_user(socket, user_params) do
     case Accounts.register_user(user_params) do
-      {:ok, _user} ->
+      {:ok, user} ->
+        Notifications.notify_welcome(user)
+
         {:noreply,
          socket
          |> put_flash(

@@ -2,9 +2,23 @@ defmodule App.Notifications do
   import Ecto.Query
 
   alias App.Accounts.Scope
+  alias App.Accounts.UserNotifier
+  alias App.EmailTemplates
   alias App.Notifications.Notification
   alias App.Repo
-  alias App.Workers.EmailDeliveryWorker
+
+  @email_types %{
+    "assignment" => :assignment,
+    "connection_accepted" => :connection_accepted,
+    "connection_declined" => :connection_declined,
+    "connection_request" => :connection_request,
+    "feedback" => :feedback,
+    "reminder" => :reminder,
+    "submission" => :submission,
+    "tutor_invitation" => :tutor_invitation,
+    "tutor_verification" => :tutor_verification,
+    "welcome" => :welcome
+  }
 
   def subscribe(user_id), do: Phoenix.PubSub.subscribe(App.PubSub, "notifications:#{user_id}")
 
@@ -75,15 +89,30 @@ defmodule App.Notifications do
     })
   end
 
-  def notify_feedback(student_email, student_id, title, status, feedback) do
-    enqueue(%{
-      "type" => "feedback",
-      "recipient" => student_email,
-      "recipient_user_id" => student_id,
-      "title" => title,
-      "status" => Atom.to_string(status),
-      "feedback" => feedback || ""
+  def notify_welcome(user) do
+    deliver_email(%{
+      "type" => "welcome",
+      "recipient" => user.email,
+      "recipient_user_id" => user.id,
+      "name" => user.first_name || user.email,
+      "role" => Atom.to_string(user.role)
     })
+  end
+
+  def notify_feedback(student_email, student_id, title, status, feedback, details \\ %{}) do
+    enqueue(
+      Map.merge(
+        %{
+          "type" => "feedback",
+          "recipient" => student_email,
+          "recipient_user_id" => student_id,
+          "title" => title,
+          "status" => Atom.to_string(status),
+          "feedback" => feedback || ""
+        },
+        details
+      )
+    )
   end
 
   def notify_connection_request(tutor_email, tutor_id, requester) do
@@ -131,14 +160,19 @@ defmodule App.Notifications do
     })
   end
 
-  def notify_assignment(student_email, student_id, title, path) do
-    enqueue(%{
-      "type" => "assignment",
-      "recipient" => student_email,
-      "recipient_user_id" => student_id,
-      "title" => title,
-      "path" => path
-    })
+  def notify_assignment(student_email, student_id, title, path, details \\ %{}) do
+    enqueue(
+      Map.merge(
+        %{
+          "type" => "assignment",
+          "recipient" => student_email,
+          "recipient_user_id" => student_id,
+          "title" => title,
+          "path" => path
+        },
+        details
+      )
+    )
   end
 
   def notify_tutor_verification(tutor_email, tutor_id, status) do
@@ -150,5 +184,32 @@ defmodule App.Notifications do
     })
   end
 
-  defp enqueue(args), do: args |> EmailDeliveryWorker.new() |> Oban.insert()
+  def notify_reminder(student_email, student_id, title, details \\ %{}) do
+    deliver_email(
+      Map.merge(
+        %{
+          "type" => "reminder",
+          "recipient" => student_email,
+          "recipient_user_id" => student_id,
+          "title" => title
+        },
+        details
+      )
+    )
+  end
+
+  defp enqueue(args), do: deliver_email(args)
+
+  defp deliver_email(%{"type" => type, "recipient" => recipient} = args) do
+    case Map.fetch(@email_types, type) do
+      {:ok, template_type} ->
+        UserNotifier.deliver_notification(
+          recipient,
+          EmailTemplates.notification(template_type, args)
+        )
+
+      :error ->
+        {:error, :unsupported_email_type}
+    end
+  end
 end

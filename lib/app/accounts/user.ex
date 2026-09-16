@@ -9,6 +9,8 @@ defmodule App.Accounts.User do
     field :last_name, :string
     field :gender, :string
     field :location, :string
+    field :latitude, :float
+    field :longitude, :float
     field :phone_number, :string
     field :time_zone, :string, default: "Africa/Lusaka"
     field :terms_accepted_at, :utc_datetime
@@ -52,6 +54,18 @@ defmodule App.Accounts.User do
     |> validate_email(opts)
   end
 
+  @doc "Changes the location used for the user's local practice reminders."
+  def practice_location_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:location, :time_zone, :latitude, :longitude])
+    |> validate_required([:location, :time_zone])
+    |> validate_length(:location, min: 2, max: 120)
+    |> validate_number(:latitude, greater_than_or_equal_to: -90, less_than_or_equal_to: 90)
+    |> validate_number(:longitude, greater_than_or_equal_to: -180, less_than_or_equal_to: 180)
+    |> validate_coordinate_pair()
+    |> validate_coordinate_pair()
+  end
+
   @doc "A changeset for a new account, including the chosen portal role."
   def registration_changeset(user, attrs, opts \\ []) do
     user
@@ -62,6 +76,8 @@ defmodule App.Accounts.User do
       :last_name,
       :gender,
       :location,
+      :latitude,
+      :longitude,
       :phone_number,
       :time_zone,
       :terms_accepted,
@@ -80,6 +96,8 @@ defmodule App.Accounts.User do
     |> validate_length(:first_name, min: 2, max: 80)
     |> validate_length(:last_name, min: 2, max: 80)
     |> validate_length(:location, min: 2, max: 120)
+    |> validate_number(:latitude, greater_than_or_equal_to: -90, less_than_or_equal_to: 90)
+    |> validate_number(:longitude, greater_than_or_equal_to: -180, less_than_or_equal_to: 180)
     |> validate_format(:phone_number, ~r/^\+?[0-9()\-\s]{7,20}$/,
       message: "must be a valid phone number"
     )
@@ -114,6 +132,16 @@ defmodule App.Accounts.User do
       )
     else
       changeset
+    end
+  end
+
+  defp validate_coordinate_pair(changeset) do
+    case {get_field(changeset, :latitude), get_field(changeset, :longitude)} do
+      {nil, nil} -> changeset
+      {latitude, longitude} when is_number(latitude) and is_number(longitude) -> changeset
+      {nil, _longitude} -> add_error(changeset, :latitude, "is required when longitude is set")
+      {_latitude, nil} -> add_error(changeset, :longitude, "is required when latitude is set")
+      _ -> changeset
     end
   end
 

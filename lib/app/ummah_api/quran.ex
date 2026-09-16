@@ -33,6 +33,7 @@ defmodule App.UmmahApi.Quran do
              Req.get(
                url: surah_url(surah_number),
                params: [script: "uthmani", translation: "sahih_international"],
+               headers: api_key_header(),
                receive_timeout: @request_timeout
              ),
            true <- response.status in 200..299,
@@ -122,5 +123,12 @@ defmodule App.UmmahApi.Quran do
 
   defp select_range(verses, from, to) do
     Enum.filter(verses, fn verse -> verse.number >= from and verse.number <= to end)
+  end
+
+  defp api_key_header do
+    case Application.fetch_env!(:app, :ummah_api) |> Keyword.get(:api_key) do
+      key when is_binary(key) and key != "" -> [{"x-api-key", key}]
+      _ -> []
+    end
   end
 end

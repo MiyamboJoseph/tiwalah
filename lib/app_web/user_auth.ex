@@ -282,12 +282,21 @@ defmodule AppWeb.UserAuth do
     |> Phoenix.Component.assign(:unread_notification_count, Notifications.unread_count(scope))
     |> Phoenix.LiveView.attach_hook(:notification_badge, :handle_info, fn
       {:notification_created, _notification_id}, socket ->
-        {:cont,
-         Phoenix.Component.assign(
-           socket,
-           :unread_notification_count,
-           Notifications.unread_count(socket.assigns.current_scope)
-         )}
+        socket =
+          Phoenix.Component.assign(
+            socket,
+            :unread_notification_count,
+            Notifications.unread_count(socket.assigns.current_scope)
+          )
+
+        # The notification list needs this message to refresh itself. Other
+        # LiveViews only need their header badge updated; forwarding it to
+        # them causes a FunctionClauseError when they do not define a handler.
+        if socket.view == AppWeb.NotificationLive do
+          {:cont, socket}
+        else
+          {:halt, socket}
+        end
 
       {:notification_read, _notification_id}, socket ->
         {:halt,

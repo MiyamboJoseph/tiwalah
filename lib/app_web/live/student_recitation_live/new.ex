@@ -3,6 +3,7 @@ defmodule AppWeb.StudentRecitationLive.New do
 
   alias App.Recitations
   alias App.Recitations.AudioStorage
+  alias App.UmmahApi.Learning
   alias App.UmmahApi.Quran, as: UmmahQuran
 
   def mount(%{"assignment_id" => assignment_id}, _session, socket) do
@@ -13,7 +14,12 @@ defmodule AppWeb.StudentRecitationLive.New do
         {:ok,
          socket
          |> assign(assignment: assignment, form: to_form(%{"note" => ""}, as: "submission"))
-         |> assign(quran_passage: :loading, passage_page: 1)
+         |> assign(
+           quran_passage: :loading,
+           passage_page: 1,
+           word_by_word: %{},
+           reciter_audio: %{}
+         )
          |> load_passage(assignment)
          |> allow_upload(:audio,
            accept: ~w(.webm .mp3 .wav .m4a .ogg),
@@ -77,11 +83,24 @@ defmodule AppWeb.StudentRecitationLive.New do
     do: {:noreply, cancel_upload(socket, :audio, ref)}
 
   def handle_event("paginate_passage", %{"page" => page}, socket) do
-    {:noreply, assign(socket, passage_page: page_number(page))}
+    socket =
+      socket
+      |> assign(passage_page: page_number(page), word_by_word: %{}, reciter_audio: %{})
+      |> load_words()
+      |> load_reciter_audio()
+
+    {:noreply, socket}
   end
 
-  def handle_info({:quran_passage_loaded, result}, socket),
-    do: {:noreply, assign(socket, quran_passage: result)}
+  def handle_info({:quran_passage_loaded, result}, socket) do
+    {:noreply, socket |> assign(quran_passage: result) |> load_words() |> load_reciter_audio()}
+  end
+
+  def handle_info({:word_by_word_loaded, words}, socket),
+    do: {:noreply, assign(socket, word_by_word: words)}
+
+  def handle_info({:reciter_audio_loaded, clips}, socket),
+    do: {:noreply, assign(socket, reciter_audio: clips)}
 
   def render(assigns) do
     ~H"""
@@ -110,6 +129,8 @@ defmodule AppWeb.StudentRecitationLive.New do
               passage={@quran_passage}
               page={@passage_page}
               on_page_change="paginate_passage"
+              word_by_word={@word_by_word}
+              reciter_audio={@reciter_audio}
             />
           </div>
           <.form
@@ -246,6 +267,44 @@ defmodule AppWeb.StudentRecitationLive.New do
 
     socket
   end
+
+  defp load_words(%{assigns: %{quran_passage: {:ok, passage}, assignment: assignment}} = socket) do
+    if connected?(socket) do
+      parent = self()
+      page = socket.assigns.passage_page
+      verses = Enum.slice(passage.verses, 5 * (page - 1), 5)
+
+      Task.start(fn ->
+        with {:ok, surah_number} <- App.Quran.surah_number(assignment.surah_name) do
+          send(parent, {:word_by_word_loaded, Learning.word_by_word(surah_number, verses)})
+        end
+      end)
+    end
+
+    socket
+  end
+
+  defp load_words(socket), do: socket
+
+  defp load_reciter_audio(
+         %{assigns: %{quran_passage: {:ok, passage}, assignment: assignment}} = socket
+       ) do
+    if connected?(socket) do
+      parent = self()
+      page = socket.assigns.passage_page
+      verses = Enum.slice(passage.verses, 5 * (page - 1), 5)
+
+      Task.start(fn ->
+        with {:ok, surah_number} <- App.Quran.surah_number(assignment.surah_name) do
+          send(parent, {:reciter_audio_loaded, Learning.reciter_audio(surah_number, verses)})
+        end
+      end)
+    end
+
+    socket
+  end
+
+  defp load_reciter_audio(socket), do: socket
 
   defp page_number(page) do
     case Integer.parse(page) do
