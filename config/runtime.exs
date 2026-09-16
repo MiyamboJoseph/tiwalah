@@ -20,6 +20,14 @@ if System.get_env("PHX_SERVER") do
   config :app, AppWeb.Endpoint, server: true
 end
 
+# These values are read when the application starts, so a release can receive a
+# new UmmahAPI key or endpoint without recompilation. The key remains server-side
+# and is never placed in browser JavaScript.
+config :app, :ummah_api,
+  base_url: System.get_env("UMMAH_API_BASE_URL") || "https://ummahapi.com",
+  api_key: System.get_env("UMMAH_API_KEY") || "",
+  default_reciter: System.get_env("UMMAH_RECITER") || "Mishary Alafasy"
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

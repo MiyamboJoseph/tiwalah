@@ -10,6 +10,7 @@ defmodule App.Recitations.Assignment do
     field :ayah_to, :integer
     field :title, :string
     field :due_date, :date
+    field :reminder_sent_on, :date
 
     field :status, Ecto.Enum,
       values: [:assigned, :submitted, :reviewed, :repeat_required],

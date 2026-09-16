@@ -154,8 +154,8 @@ defmodule App.Recitations do
         left_join: connection in TutorStudentConnection,
         on: connection.tutor_id == tutor.id and connection.student_id == ^student_id,
         where:
-          tutor.role == :tutor and tutor.tutor_verification_status == :verified and
-            is_nil(connection.id),
+          tutor.role == :tutor and tutor.account_status == :active and
+            tutor.tutor_verification_status == :verified and is_nil(connection.id),
         order_by: [asc: tutor.first_name, asc: tutor.last_name, asc: tutor.email],
         limit: 30
     )
@@ -166,7 +166,8 @@ defmodule App.Recitations do
       from student in User,
         left_join: connection in TutorStudentConnection,
         on: connection.student_id == student.id and connection.tutor_id == ^tutor_id,
-        where: student.role == :student and is_nil(connection.id),
+        where:
+          student.role == :student and student.account_status == :active and is_nil(connection.id),
         order_by: [asc: student.first_name, asc: student.last_name, asc: student.email],
         limit: 30
     )
@@ -203,8 +204,11 @@ defmodule App.Recitations do
 
   defp request_student_connection_for_tutor_id(tutor_id, student_id) do
     case Repo.get(User, student_id) do
-      %User{role: :student} -> request_student_connection_for_tutor(tutor_id, student_id)
-      _ -> {:error, :student_not_found}
+      %User{role: :student, account_status: :active} ->
+        request_student_connection_for_tutor(tutor_id, student_id)
+
+      _ ->
+        {:error, :student_not_found}
     end
   end
 
@@ -213,7 +217,7 @@ defmodule App.Recitations do
       nil ->
         {:error, :student_not_found}
 
-      %User{id: student_id} ->
+      %User{id: student_id, account_status: :active} ->
         request_student_connection_for_tutor(tutor_id, student_id)
     end
   end
@@ -276,7 +280,7 @@ defmodule App.Recitations do
 
   defp request_tutor_connection_for_student_id(tutor_id, student_id) do
     case Repo.get(User, tutor_id) do
-      %User{role: :tutor, tutor_verification_status: :verified} ->
+      %User{role: :tutor, account_status: :active, tutor_verification_status: :verified} ->
         request_tutor_connection_for_student(tutor_id, student_id)
 
       _ ->
@@ -289,7 +293,7 @@ defmodule App.Recitations do
       nil ->
         {:error, :tutor_not_found}
 
-      %User{id: tutor_id, tutor_verification_status: :verified} ->
+      %User{id: tutor_id, account_status: :active, tutor_verification_status: :verified} ->
         request_tutor_connection_for_student(tutor_id, student_id)
 
       %User{} ->
@@ -771,7 +775,14 @@ defmodule App.Recitations do
                     Repo.update(
                       Ecto.Changeset.change(submission.assignment,
                         status: reviewed.status,
-                        due_date: review_due_date(submission.assignment, reviewed)
+                        due_date: review_due_date(submission.assignment, reviewed),
+                        # A new repeat request deserves one fresh reminder on its
+                        # revised due date. Approved work keeps its existing mark.
+                        reminder_sent_on:
+                          if(reviewed.status == :repeat_required,
+                            do: nil,
+                            else: submission.assignment.reminder_sent_on
+                          )
                       )
                     ) do
                {:ok, reviewed}
@@ -972,7 +983,10 @@ defmodule App.Recitations do
   end
 
   defp tutor_available?(tutor_id) do
-    match?(%User{role: :tutor, tutor_verification_status: :verified}, Repo.get(User, tutor_id))
+    match?(
+      %User{role: :tutor, account_status: :active, tutor_verification_status: :verified},
+      Repo.get(User, tutor_id)
+    )
   end
 
   defp ensure_tutor_available(tutor_id) do

@@ -4,19 +4,26 @@ defmodule AppWeb.AdminLive.TutorVerifications do
   alias App.Accounts
 
   def mount(_params, _session, socket) do
-    {:ok, load_tutors(socket)}
+    {:ok, load_tutors(socket, 1)}
   end
 
-  def handle_event("review_tutor", %{"id" => id, "status" => status}, socket) do
+  def handle_event("paginate_tutors", %{"page" => page}, socket),
+    do: {:noreply, load_tutors(socket, page)}
+
+  def handle_event("review_tutor", %{"_id" => id, "status" => status} = params, socket) do
     case decision(status) do
       :invalid ->
         {:noreply, put_flash(socket, :error, "That verification decision is invalid.")}
 
       status ->
-        case Accounts.review_tutor(socket.assigns.current_scope, id, status) do
+        case Accounts.review_tutor(socket.assigns.current_scope, id, status, params["reason"]) do
           {:ok, _tutor} ->
             message = if status == :verified, do: "Tutor verified.", else: "Tutor rejected."
-            {:noreply, socket |> put_flash(:info, message) |> load_tutors()}
+            {:noreply, socket |> put_flash(:info, message) |> load_tutors(socket.assigns.page)}
+
+          {:error, :rejection_reason_required} ->
+            {:noreply,
+             put_flash(socket, :error, "Please give the tutor a clear reason for the decision.")}
 
           _ ->
             {:noreply,
@@ -28,6 +35,7 @@ defmodule AppWeb.AdminLive.TutorVerifications do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <.navigation active={:tutors} />
       <section class="rounded-3xl bg-emerald-950 px-6 py-10 text-amber-50 shadow-lg sm:px-10">
         <p class="text-sm font-semibold uppercase tracking-[0.2em] text-amber-300">
           Administrator portal
@@ -100,38 +108,60 @@ defmodule AppWeb.AdminLive.TutorVerifications do
               <button
                 type="button"
                 phx-click="review_tutor"
-                phx-value-id={tutor.id}
+                phx-value-_id={tutor.id}
                 phx-value-status="verified"
                 class="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
               >
                 Verify tutor
               </button>
-              <button
-                type="button"
-                phx-click="review_tutor"
-                phx-value-id={tutor.id}
-                phx-value-status="rejected"
-                data-confirm="Reject this tutor profile? They will not be available to students."
-                class="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50"
-              >
-                Reject
-              </button>
             </div>
+            <form class="mt-4 border-t border-emerald-900/10 pt-4" phx-submit="review_tutor">
+              <input type="hidden" name="_id" value={tutor.id} />
+              <input type="hidden" name="status" value="rejected" />
+              <label
+                class="text-sm font-semibold text-emerald-950"
+                for={"rejection-reason-#{tutor.id}"}
+              >
+                Reason if declining
+              </label>
+              <textarea
+                id={"rejection-reason-#{tutor.id}"}
+                name="reason"
+                required
+                rows="2"
+                class="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
+                placeholder="Explain what needs to be improved or supplied."
+              ></textarea>
+              <button
+                type="submit"
+                data-confirm="Decline this tutor profile and send the stated guidance?"
+                class="mt-2 rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50"
+              >
+                Decline with guidance
+              </button>
+            </form>
           </article>
         </div>
+        <.pagination
+          page={@page}
+          total_pages={@total_pages}
+          total_entries={@pending_count}
+          item_label="pending tutors"
+          on_change="paginate_tutors"
+        />
       </section>
     </Layouts.app>
     """
   end
 
-  defp load_tutors(socket) do
-    tutors = Accounts.list_tutors_for_verification(socket.assigns.current_scope)
-    pending_tutors = Enum.filter(tutors, &(&1.tutor_verification_status == :pending))
+  defp load_tutors(socket, page) do
+    pagination = Accounts.paginate_tutors_for_verification(socket.assigns.current_scope, page)
 
     assign(socket,
-      tutors: tutors,
-      pending_tutors: pending_tutors,
-      pending_count: length(pending_tutors)
+      pending_tutors: pagination.entries,
+      pending_count: pagination.total_entries,
+      page: pagination.page,
+      total_pages: pagination.total_pages
     )
   end
 

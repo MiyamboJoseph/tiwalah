@@ -87,6 +87,7 @@ defmodule AppWeb do
       # Core UI components
       import AppWeb.CoreComponents
       import AppWeb.RecitationComponents
+      import AppWeb.AdminComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

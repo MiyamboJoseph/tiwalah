@@ -67,7 +67,10 @@ defmodule AppWeb.Router do
 
     live_session :require_admin,
       on_mount: [{AppWeb.UserAuth, :require_authenticated}, {AppWeb.UserAuth, :require_admin}] do
+      live "/admin", AdminLive.Dashboard, :index
       live "/admin/tutors", AdminLive.TutorVerifications, :index
+      live "/admin/users", AdminLive.Users, :index
+      live "/admin/connections", AdminLive.Connections, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password

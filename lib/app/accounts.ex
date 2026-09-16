@@ -7,7 +7,7 @@ defmodule App.Accounts do
   alias App.Repo
   alias App.Notifications
 
-  alias App.Accounts.{Scope, User, UserToken, UserNotifier}
+  alias App.Accounts.{AdminAuditEvent, Scope, User, UserToken, UserNotifier}
 
   ## Database getters
 
@@ -42,7 +42,7 @@ defmodule App.Accounts do
   def get_user_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
     user = Repo.get_by(User, email: normalize_email(email))
-    if User.valid_password?(user, password), do: user
+    if User.valid_password?(user, password) and active?(user), do: user
   end
 
   @doc """
@@ -119,16 +119,39 @@ defmodule App.Accounts do
 
   @doc "Lists tutor profiles for a trusted administrator to review."
   def list_tutors_for_verification(%Scope{user: %User{role: :admin}}) do
-    Repo.all(
-      from user in User,
-        where: user.role == :tutor,
-        order_by: [asc: user.tutor_verification_status, desc: user.inserted_at]
+    Repo.all(tutors_for_verification_query())
+  end
+
+  def paginate_tutors_for_verification(%Scope{user: %User{role: :admin}}, page, per_page \\ 12) do
+    paginate_query(
+      from(user in tutors_for_verification_query(),
+        where: user.tutor_verification_status == :pending
+      ),
+      page,
+      per_page
     )
   end
 
   @doc "Records an administrator's decision about a tutor profile."
-  def review_tutor(%Scope{user: %User{id: admin_id, role: :admin}}, tutor_id, status)
+  def review_tutor(scope, tutor_id, status, reason \\ nil)
+
+  def review_tutor(
+        %Scope{user: %User{id: admin_id, role: :admin}} = scope,
+        tutor_id,
+        status,
+        reason
+      )
       when status in [:verified, :rejected] do
+    reason = normalize_optional_text(reason)
+
+    if status == :rejected and is_nil(reason) do
+      {:error, :rejection_reason_required}
+    else
+      review_tutor_with_reason(scope, admin_id, tutor_id, status, reason)
+    end
+  end
+
+  defp review_tutor_with_reason(_scope, admin_id, tutor_id, status, reason) do
     case Repo.get_by(User, id: tutor_id, role: :tutor) do
       nil ->
         {:error, :not_found}
@@ -137,15 +160,21 @@ defmodule App.Accounts do
         changes = %{
           tutor_verification_status: status,
           tutor_verified_at: if(status == :verified, do: DateTime.utc_now(:second), else: nil),
-          tutor_verified_by_id: admin_id
+          tutor_verified_by_id: admin_id,
+          tutor_verification_reason: if(status == :rejected, do: reason, else: nil)
         }
 
         case Repo.update(Ecto.Changeset.change(tutor, changes)) do
           {:ok, updated_tutor} ->
+            record_admin_event(admin_id, updated_tutor.id, "tutor_#{status}", %{
+              "reason" => reason
+            })
+
             Notifications.notify_tutor_verification(
               updated_tutor.email,
               updated_tutor.id,
-              status
+              status,
+              reason
             )
 
             {:ok, updated_tutor}
@@ -155,6 +184,132 @@ defmodule App.Accounts do
         end
     end
   end
+
+  @doc "Lists users for an administrator, with bounded server-side filters."
+  def admin_list_users(%Scope{user: %User{role: :admin}}, filters \\ %{}) do
+    filters
+    |> admin_users_query()
+    |> Repo.all()
+  end
+
+  def admin_paginate_users(%Scope{user: %User{role: :admin}}, filters, page, per_page \\ 20) do
+    filters
+    |> admin_users_query()
+    |> paginate_query(page, per_page)
+  end
+
+  defp admin_users_query(filters) do
+    search = filters |> Map.get("search", "") |> String.trim()
+    role = Map.get(filters, "role", "all")
+    account_status = Map.get(filters, "account_status", "all")
+
+    query = from user in User, order_by: [desc: user.inserted_at]
+
+    query =
+      if search == "" do
+        query
+      else
+        term = "%#{search}%"
+
+        from user in query,
+          where:
+            ilike(user.email, ^term) or
+              ilike(fragment("concat_ws(' ', ?, ?)", user.first_name, user.last_name), ^term)
+      end
+
+    query =
+      if role in ["student", "tutor", "admin"],
+        do: from(user in query, where: user.role == ^role),
+        else: query
+
+    query =
+      if account_status in ["active", "suspended"],
+        do: from(user in query, where: user.account_status == ^account_status),
+        else: query
+
+    query
+  end
+
+  @doc "Suspends or restores a non-admin account; the action is retained in the audit log."
+  def set_account_status(%Scope{user: %User{id: admin_id, role: :admin}}, user_id, status)
+      when status in [:active, :suspended] do
+    with {:ok, target_id} <- Ecto.Type.cast(:id, user_id),
+         %User{} = user <- Repo.get(User, target_id),
+         true <- user.role != :admin,
+         true <- user.id != admin_id,
+         {:ok, updated} <- Repo.update(Ecto.Changeset.change(user, account_status: status)) do
+      record_admin_event(admin_id, updated.id, "account_#{status}", %{})
+      {:ok, updated}
+    else
+      false -> {:error, :protected_account}
+      nil -> {:error, :not_found}
+      {:error, _changeset} = error -> error
+      :error -> {:error, :not_found}
+    end
+  end
+
+  def admin_list_audit_events(%Scope{user: %User{role: :admin}}, limit \\ 12) do
+    Repo.all(
+      from event in AdminAuditEvent,
+        order_by: [desc: event.inserted_at],
+        limit: ^min(max(limit, 1), 50),
+        preload: [:actor, :target_user]
+    )
+  end
+
+  def record_admin_event(actor_id, target_user_id, action, metadata) do
+    %AdminAuditEvent{
+      actor_id: actor_id,
+      target_user_id: target_user_id,
+      action: action,
+      metadata: metadata
+    }
+    |> Repo.insert()
+  end
+
+  defp normalize_optional_text(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp normalize_optional_text(_value), do: nil
+
+  defp tutors_for_verification_query do
+    from user in User,
+      where: user.role == :tutor,
+      order_by: [asc: user.tutor_verification_status, desc: user.inserted_at]
+  end
+
+  defp paginate_query(query, page, per_page) do
+    per_page = min(max(per_page, 1), 50)
+    total_entries = Repo.aggregate(query, :count, :id)
+    total_pages = max(1, div(total_entries + per_page - 1, per_page))
+    page = page |> normalize_page() |> min(total_pages)
+
+    %{
+      entries: query |> limit(^per_page) |> offset(^(per_page * (page - 1))) |> Repo.all(),
+      page: page,
+      per_page: per_page,
+      total_entries: total_entries,
+      total_pages: total_pages
+    }
+  end
+
+  defp normalize_page(page) when is_integer(page), do: max(page, 1)
+
+  defp normalize_page(page) when is_binary(page) do
+    case Integer.parse(page) do
+      {number, ""} -> max(number, 1)
+      _ -> 1
+    end
+  end
+
+  defp normalize_page(_page), do: 1
+
+  def active?(%User{account_status: :active}), do: true
+  def active?(_user), do: false
 
   defp normalize_email(email), do: email |> String.trim() |> String.downcase()
 
@@ -271,7 +426,8 @@ defmodule App.Accounts do
   """
   def get_user_by_magic_link_token(token) do
     with {:ok, query} <- UserToken.verify_magic_link_token_query(token),
-         {user, _token} <- Repo.one(query) do
+         {user, _token} <- Repo.one(query),
+         true <- active?(user) do
       user
     else
       _ -> nil
@@ -300,6 +456,9 @@ defmodule App.Accounts do
     {:ok, query} = UserToken.verify_magic_link_token_query(token)
 
     case Repo.one(query) do
+      {%User{} = user, _token} when user.account_status != :active ->
+        {:error, :not_found}
+
       # Prevent session fixation attacks by disallowing magic links for unconfirmed users with password
       {%User{confirmed_at: nil, hashed_password: hash}, _token} when not is_nil(hash) ->
         raise """

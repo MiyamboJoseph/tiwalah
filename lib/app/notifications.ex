@@ -175,12 +175,13 @@ defmodule App.Notifications do
     )
   end
 
-  def notify_tutor_verification(tutor_email, tutor_id, status) do
+  def notify_tutor_verification(tutor_email, tutor_id, status, reason \\ nil) do
     enqueue(%{
       "type" => "tutor_verification",
       "recipient" => tutor_email,
       "recipient_user_id" => tutor_id,
-      "status" => Atom.to_string(status)
+      "status" => Atom.to_string(status),
+      "reason" => reason
     })
   end
 

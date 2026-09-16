@@ -5,6 +5,7 @@ defmodule App.Accounts.User do
   schema "users" do
     field :email, :string
     field :role, Ecto.Enum, values: [:student, :tutor, :admin], default: :student
+    field :account_status, Ecto.Enum, values: [:active, :suspended], default: :active
     field :first_name, :string
     field :last_name, :string
     field :gender, :string
@@ -28,6 +29,7 @@ defmodule App.Accounts.User do
       default: :not_applicable
 
     field :tutor_verified_at, :utc_datetime
+    field :tutor_verification_reason, :string
     belongs_to :tutor_verifier, __MODULE__, foreign_key: :tutor_verified_by_id
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true

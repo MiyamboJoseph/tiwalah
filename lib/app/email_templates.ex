@@ -160,8 +160,7 @@ defmodule App.EmailTemplates do
            "Open tutor portal", "/tutor"}
 
         _ ->
-          {"Your tutor profile needs attention",
-           "Your tutor profile was not approved at this time. Review your profile details and contact the Tilawah administrator if you need guidance.",
+          {"Your tutor profile needs attention", rejection_message(args["reason"]),
            "Open tutor portal", "/tutor"}
       end
 
@@ -173,6 +172,14 @@ defmodule App.EmailTemplates do
       app_url(path),
       "Thank you for serving Qur’an students with care."
     )
+  end
+
+  defp rejection_message(reason) when is_binary(reason) and reason != "" do
+    "Your tutor profile was not approved at this time. Administrator guidance: #{reason}"
+  end
+
+  defp rejection_message(_reason) do
+    "Your tutor profile was not approved at this time. Review your profile details and contact the Tilawah administrator if you need guidance."
   end
 
   defp greeting(%{first_name: first_name}) when is_binary(first_name) and first_name != "",

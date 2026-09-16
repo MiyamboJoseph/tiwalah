@@ -187,7 +187,7 @@ defmodule AppWeb.Layouts do
     """
   end
 
-  defp portal_path(%{role: :admin}), do: ~p"/admin/tutors"
+  defp portal_path(%{role: :admin}), do: ~p"/admin"
   defp portal_path(_user), do: ~p"/dashboard"
 
   defp portal_label(%{role: :admin}), do: "Admin"

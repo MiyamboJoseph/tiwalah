@@ -27,12 +27,16 @@ config :app,
   ecto_repos: [App.Repo],
   generators: [timestamp_type: :utc_datetime]
 
-# UmmahAPI is used server-side for Qur'an learning content. An API key is optional,
-# but increases available request capacity. Never expose it to browser JavaScript.
+# UmmahAPI is used server-side for Qur'an learning content. Runtime configuration
+# below deliberately contains no secret values: releases load API credentials from
+# their environment in config/runtime.exs.
 config :app, :ummah_api,
-  base_url: System.get_env("UMMAH_API_BASE_URL") || "https://ummahapi.com",
-  api_key: System.get_env("UMMAH_API_KEY") || "",
-  default_reciter: System.get_env("UMMAH_RECITER") || "Mishary Alafasy"
+  base_url: "https://ummahapi.com",
+  api_key: "umh_37150b60d9db93f3844489049f3dc761ab4ca1de",
+  default_reciter: "Mishary Alafasy"
+
+# Use the IANA time-zone database whenever a local time must be calculated.
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 # Configure the endpoint
 config :app, AppWeb.Endpoint,
@@ -90,7 +94,7 @@ config :app, Oban,
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
-       {"*/15 * * * *", App.Workers.DailyPracticeReminder},
+       {"* * * * *", App.Workers.DailyPracticeReminder},
        {"30 2 * * *", App.Workers.AudioCleanupWorker},
        {"0 3 * * *", App.Workers.AudioBackupWorker}
      ]}

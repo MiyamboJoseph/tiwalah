@@ -8,7 +8,7 @@ defmodule AppWeb.PageController do
     do: redirect(conn, to: ~p"/dashboard")
 
   def home(%{assigns: %{current_scope: %{user: %{role: :admin}}}} = conn, _params),
-    do: redirect(conn, to: ~p"/admin/tutors")
+    do: redirect(conn, to: ~p"/admin")
 
   def home(conn, _params), do: render(conn, :home)
 

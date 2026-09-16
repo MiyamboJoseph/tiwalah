@@ -68,7 +68,8 @@ defmodule AppWeb.UserAuth do
   """
   def fetch_current_scope_for_user(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
-         {user, token_inserted_at} <- Accounts.get_user_by_session_token(token) do
+         {user, token_inserted_at} <- Accounts.get_user_by_session_token(token),
+         true <- Accounts.active?(user) do
       conn
       |> assign(:current_scope, Scope.for_user(user))
       |> maybe_reissue_user_session_token(user, token_inserted_at)
@@ -269,7 +270,7 @@ defmodule AppWeb.UserAuth do
           Accounts.get_user_by_session_token(user_token)
         end || {nil, nil}
 
-      Scope.for_user(user)
+      Scope.for_user(if Accounts.active?(user), do: user, else: nil)
     end)
   end
 
@@ -314,7 +315,7 @@ defmodule AppWeb.UserAuth do
   @doc "Returns the path to redirect to after log in."
   def signed_in_path(%Accounts.User{role: :tutor}), do: ~p"/tutor"
   def signed_in_path(%Accounts.User{role: :student}), do: ~p"/dashboard"
-  def signed_in_path(%Accounts.User{role: :admin}), do: ~p"/admin/tutors"
+  def signed_in_path(%Accounts.User{role: :admin}), do: ~p"/admin"
 
   def signed_in_path(%Plug.Conn{
         assigns: %{current_scope: %Scope{user: %Accounts.User{role: :tutor}}}
@@ -331,7 +332,7 @@ defmodule AppWeb.UserAuth do
   def signed_in_path(%Plug.Conn{
         assigns: %{current_scope: %Scope{user: %Accounts.User{role: :admin}}}
       }) do
-    ~p"/admin/tutors"
+    ~p"/admin"
   end
 
   def signed_in_path(_), do: ~p"/"
