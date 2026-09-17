@@ -323,6 +323,7 @@ defmodule AppWeb.UserLive.Registration do
                   label="Phone number"
                   autocomplete="tel"
                   placeholder="+260 …"
+                  phx-debounce="500"
                   required
                 />
               </div>
@@ -362,6 +363,7 @@ defmodule AppWeb.UserLive.Registration do
                 placeholder="you@example.com"
                 autocomplete="email"
                 spellcheck="false"
+                phx-debounce="500"
                 required
               />
 
@@ -371,6 +373,7 @@ defmodule AppWeb.UserLive.Registration do
                   type="password"
                   label="Password"
                   autocomplete="new-password"
+                  phx-debounce="300"
                   required
                 />
                 <.input
@@ -378,6 +381,7 @@ defmodule AppWeb.UserLive.Registration do
                   type="password"
                   label="Confirm password"
                   autocomplete="new-password"
+                  phx-debounce="300"
                   required
                 />
               </div>
@@ -541,7 +545,10 @@ defmodule AppWeb.UserLive.Registration do
     {:noreply,
      socket
      |> assign(registration_params: params)
-     |> assign_form(build_changeset(params))
+     # Mark the changeset as a live validation so field errors—including a
+     # password-confirmation mismatch—are rendered as soon as the user edits
+     # the relevant input.
+     |> assign_form(validation_changeset(params))
      |> sync_role_url(params)}
   end
 
@@ -566,7 +573,7 @@ defmodule AppWeb.UserLive.Registration do
   end
 
   defp build_changeset(params) do
-    Accounts.change_user_registration(%User{}, params, validate_unique: false)
+    Accounts.change_user_registration(%User{}, params)
     |> User.password_changeset(params, hash_password: false)
   end
 

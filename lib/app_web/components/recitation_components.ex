@@ -26,13 +26,35 @@ defmodule AppWeb.RecitationComponents do
       </div>
       {render_slot(@detail)}
       <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-emerald-900/10 pt-4 text-sm text-stone-600 dark:text-stone-300">
-        <span :if={@assignment.due_date}>
-          Due {Calendar.strftime(@assignment.due_date, "%d %b %Y")}
-        </span>
+        <.due_date_label due_date={@assignment.due_date} />
         <span :if={!@assignment.due_date}>Practice at your pace</span>
         {render_slot(@action)}
       </div>
     </article>
+    """
+  end
+
+  attr :due_date, :any, default: nil
+
+  def due_date_label(assigns) do
+    assigns = assign(assigns, deadline: deadline_details(assigns.due_date))
+
+    ~H"""
+    <span :if={@deadline} class={@deadline.class}>{@deadline.label}</span>
+    """
+  end
+
+  attr :due_date, :any, default: nil
+  attr :submitted_at, :any, default: nil
+
+  def submission_deadline_label(assigns) do
+    assigns =
+      assign(assigns,
+        deadline: submission_deadline_details(assigns.submitted_at, assigns.due_date)
+      )
+
+    ~H"""
+    <span :if={@deadline} class={@deadline.class}>{@deadline.label}</span>
     """
   end
 
@@ -100,7 +122,7 @@ defmodule AppWeb.RecitationComponents do
         {@submission.repeat_instruction}
       </p>
       <p :if={@submission.repeat_due_date} class="mt-2 text-sm text-stone-700">
-        Revised deadline: {Calendar.strftime(@submission.repeat_due_date, "%d %b %Y")}
+        <.due_date_label due_date={@submission.repeat_due_date} />
       </p>
       <div :if={@submission.tutor_audio_path && @audio_src} class="mt-3">
         <p class="mb-1 text-sm font-semibold text-emerald-950">Tutor audio example</p>
@@ -456,4 +478,44 @@ defmodule AppWeb.RecitationComponents do
 
   defp reciter_name(%{reciter: reciter}) when is_binary(reciter), do: reciter
   defp reciter_name(_clip), do: "the reference reciter"
+
+  defp deadline_details(nil), do: nil
+
+  defp deadline_details(%Date{} = due_date) do
+    case Date.diff(due_date, Date.utc_today()) do
+      days when days < 0 ->
+        %{label: "Overdue by #{pluralize(-days, "day")}", class: "font-semibold text-rose-700"}
+
+      0 ->
+        %{label: "Due today", class: "font-semibold text-amber-800"}
+
+      1 ->
+        %{
+          label: "Due tomorrow · #{Calendar.strftime(due_date, "%d %b %Y")}",
+          class: "font-semibold text-amber-800"
+        }
+
+      days ->
+        %{
+          label: "Due in #{pluralize(days, "day")} · #{Calendar.strftime(due_date, "%d %b %Y")}",
+          class: "text-stone-600 dark:text-stone-300"
+        }
+    end
+  end
+
+  defp submission_deadline_details(%DateTime{} = submitted_at, %Date{} = due_date) do
+    days_late = Date.diff(DateTime.to_date(submitted_at), due_date)
+
+    if days_late > 0 do
+      %{
+        label: "Submitted #{pluralize(days_late, "day")} late",
+        class: "text-sm font-semibold text-rose-700"
+      }
+    end
+  end
+
+  defp submission_deadline_details(_, _), do: nil
+
+  defp pluralize(1, unit), do: "1 #{unit}"
+  defp pluralize(count, unit), do: "#{count} #{unit}s"
 end

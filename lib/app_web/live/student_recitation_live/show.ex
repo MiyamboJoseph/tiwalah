@@ -76,6 +76,7 @@ defmodule AppWeb.StudentRecitationLive.Show do
             {@assignment.surah_name}, ayah {@assignment.ayah_from}–{@assignment.ayah_to}
           </p>
           <div class="mt-4"><.status_badge status={@assignment.status} /></div>
+          <div class="mt-3"><.due_date_label due_date={@assignment.due_date} /></div>
         </section>
         <div class="mt-6">
           <.quran_passage
@@ -96,6 +97,10 @@ defmodule AppWeb.StudentRecitationLive.Show do
               <p class="font-semibold text-emerald-950 dark:text-emerald-100">
                 Submitted {Calendar.strftime(submission.inserted_at, "%d %b, %H:%M")}
               </p>
+              <.submission_deadline_label
+                due_date={@assignment.due_date}
+                submitted_at={submission.inserted_at}
+              />
               <.status_badge status={submission.status} />
             </div>
             <audio controls class="mt-4 w-full" src={~p"/recitations/audio/#{submission.id}"}>

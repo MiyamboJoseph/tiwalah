@@ -307,6 +307,13 @@ defmodule AppWeb.UserAuth do
            Notifications.unread_count(socket.assigns.current_scope)
          )}
 
+      # Delivery activity is recorded asynchronously after the user-facing
+      # action has completed. It does not alter the unread badge, and must not
+      # be forwarded to every LiveView because most pages do not define a
+      # matching handle_info/2 clause.
+      {:email_delivery_recorded, _event_id}, socket ->
+        {:halt, socket}
+
       _message, socket ->
         {:cont, socket}
     end)

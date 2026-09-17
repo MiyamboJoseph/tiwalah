@@ -46,9 +46,26 @@ defmodule App.Recitations.Submission do
     |> validate_inclusion(:status, [:reviewed, :repeat_required])
     |> validate_subset(:feedback_categories, App.Recitations.feedback_categories())
     |> validate_repeat_guidance()
+    |> validate_repeat_due_date()
     |> validate_repeat_focus(assignment)
     |> check_constraint(:status, name: :submission_status_is_valid)
     |> check_constraint(:repeat_ayah_to, name: :repeat_ayah_range_is_valid)
+  end
+
+  defp validate_repeat_due_date(changeset) do
+    if get_field(changeset, :status) == :repeat_required do
+      case get_field(changeset, :repeat_due_date) do
+        %Date{} = due_date ->
+          if Date.compare(due_date, Date.utc_today()) == :lt,
+            do: add_error(changeset, :repeat_due_date, "must be today or later"),
+            else: changeset
+
+        _ ->
+          changeset
+      end
+    else
+      changeset
+    end
   end
 
   defp validate_repeat_guidance(changeset) do

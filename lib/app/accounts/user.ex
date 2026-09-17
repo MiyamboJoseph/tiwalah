@@ -99,9 +99,7 @@ defmodule App.Accounts.User do
     |> validate_length(:location, min: 2, max: 120)
     |> validate_number(:latitude, greater_than_or_equal_to: -90, less_than_or_equal_to: 90)
     |> validate_number(:longitude, greater_than_or_equal_to: -180, less_than_or_equal_to: 180)
-    |> validate_format(:phone_number, ~r/^\+?[0-9()\-\s]{7,20}$/,
-      message: "must be a valid phone number"
-    )
+    |> validate_phone_number(opts)
     |> validate_required([:time_zone])
     |> validate_acceptance(:terms_accepted, message: "must be accepted to create an account")
     |> validate_tutor_profile()
@@ -180,6 +178,27 @@ defmodule App.Accounts.User do
     else
       changeset
     end
+  end
+
+  defp validate_phone_number(changeset, opts) do
+    changeset =
+      changeset
+      |> update_change(:phone_number, &normalise_phone_number/1)
+      |> validate_format(:phone_number, ~r/^\+?[0-9]{7,20}$/,
+        message: "must be a valid phone number"
+      )
+
+    if Keyword.get(opts, :validate_unique, true) do
+      changeset
+      |> unsafe_validate_unique(:phone_number, App.Repo)
+      |> unique_constraint(:phone_number)
+    else
+      changeset
+    end
+  end
+
+  defp normalise_phone_number(phone_number) do
+    String.replace(phone_number, ~r/[()\-\s]/, "")
   end
 
   defp validate_email_changed(changeset) do

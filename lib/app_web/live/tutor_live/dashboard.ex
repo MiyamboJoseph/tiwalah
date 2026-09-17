@@ -416,7 +416,12 @@ defmodule AppWeb.TutorLive.Dashboard do
                 phx-debounce="250"
               />
             </div>
-            <.input field={@form[:due_date]} type="date" label="Due date (optional)" />
+            <.input
+              field={@form[:due_date]}
+              type="date"
+              label="Due date (optional)"
+              min={Date.utc_today() |> Date.to_iso8601()}
+            />
             <label class="block text-sm font-medium text-stone-700">
               Template due in days
               <span class="text-stone-400">(used only when saving a template)</span>

@@ -166,6 +166,7 @@ defmodule AppWeb.TutorLive.Review do
         <p class="mt-2 text-stone-600 dark:text-stone-300">
           {@assignment.surah_name}, ayah {@assignment.ayah_from}–{@assignment.ayah_to}
         </p>
+        <div class="mt-3"><.due_date_label due_date={@assignment.due_date} /></div>
       </section>
       <div class="mt-6">
         <.quran_passage
@@ -193,6 +194,10 @@ defmodule AppWeb.TutorLive.Review do
             <p class="font-semibold text-emerald-950 dark:text-emerald-100">
               Submitted {Calendar.strftime(submission.inserted_at, "%d %b, %H:%M")}
             </p>
+            <.submission_deadline_label
+              due_date={@assignment.due_date}
+              submitted_at={submission.inserted_at}
+            />
             <.status_badge status={submission.status} />
           </div>
           <audio controls class="mt-4 w-full" src={~p"/recitations/audio/#{submission.id}"}>
@@ -255,6 +260,7 @@ defmodule AppWeb.TutorLive.Review do
                   type="date"
                   label="Revised deadline (optional)"
                   class="mt-3 w-full input"
+                  min={Date.utc_today() |> Date.to_iso8601()}
                 />
                 <div class="mt-3">
                   <label class="block text-sm font-medium text-stone-700">

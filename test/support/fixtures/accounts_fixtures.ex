@@ -20,7 +20,7 @@ defmodule App.AccountsFixtures do
       last_name: "Student",
       gender: "female",
       location: "Lusaka, Zambia",
-      phone_number: "+260971234567",
+      phone_number: unique_phone_number(),
       time_zone: "Africa/Lusaka",
       terms_accepted: true,
       tutor_qualification: "Qur'an teaching background",
@@ -31,6 +31,11 @@ defmodule App.AccountsFixtures do
       password: valid_user_password(),
       password_confirmation: valid_user_password()
     })
+  end
+
+  defp unique_phone_number do
+    suffix = System.unique_integer([:positive]) |> rem(1_000_000_000) |> Integer.to_string()
+    "+260" <> String.pad_leading(suffix, 9, "0")
   end
 
   def unconfirmed_user_fixture(attrs \\ %{}) do

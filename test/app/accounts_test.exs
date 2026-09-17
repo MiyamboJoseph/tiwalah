@@ -77,6 +77,24 @@ defmodule App.AccountsTest do
       assert "has already been taken" in errors_on(changeset).email
     end
 
+    test "validates phone number uniqueness after normalising formatting" do
+      %{phone_number: phone_number} = user_fixture()
+
+      {:error, changeset} =
+        Accounts.register_user(
+          valid_user_attributes(phone_number: String.replace(phone_number, "+", "+ "))
+        )
+
+      assert "has already been taken" in errors_on(changeset).phone_number
+    end
+
+    test "validates password confirmation during registration" do
+      {:error, changeset} =
+        Accounts.register_user(valid_user_attributes(password_confirmation: "does-not-match"))
+
+      assert "does not match password" in errors_on(changeset).password_confirmation
+    end
+
     test "registers users with a securely hashed password" do
       email = unique_user_email()
       {:ok, user} = Accounts.register_user(valid_user_attributes(email: email))

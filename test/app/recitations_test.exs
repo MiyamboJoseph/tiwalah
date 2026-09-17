@@ -75,6 +75,29 @@ defmodule App.RecitationsTest do
     assert "does not match the first selected ayah" in errors_on(changeset).juz_number
   end
 
+  test "assignments and repeat plans reject past deadlines" do
+    yesterday = Date.utc_today() |> Date.add(-1) |> Date.to_iso8601()
+
+    assignment_changeset =
+      Assignment.changeset(%Assignment{}, Map.put(assignment_attrs(), "due_date", yesterday))
+
+    refute assignment_changeset.valid?
+    assert "must be today or later" in errors_on(assignment_changeset).due_date
+
+    repeat_changeset =
+      Submission.review_changeset(%Submission{}, %{
+        "status" => "repeat_required",
+        "feedback" => "Please revise this passage.",
+        "repeat_ayah_from" => "1",
+        "repeat_ayah_to" => "2",
+        "repeat_instruction" => "Listen carefully, then record again.",
+        "repeat_due_date" => yesterday
+      })
+
+    refute repeat_changeset.valid?
+    assert "must be today or later" in errors_on(repeat_changeset).repeat_due_date
+  end
+
   test "repeat guidance flags each ayah outside the assignment range" do
     assignment = %Assignment{ayah_from: 20, ayah_to: 35}
 

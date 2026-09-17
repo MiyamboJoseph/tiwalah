@@ -30,10 +30,23 @@ defmodule App.Recitations.Assignment do
     |> validate_number(:juz_number, greater_than_or_equal_to: 1, less_than_or_equal_to: 30)
     |> validate_number(:ayah_from, greater_than_or_equal_to: 1)
     |> validate_number(:ayah_to, greater_than_or_equal_to: 1)
+    |> validate_due_date()
     |> validate_ayah_bounds()
     |> validate_ayah_range()
     |> validate_juz()
     |> check_constraint(:ayah_to, name: :assignment_ayah_range_is_valid)
+  end
+
+  defp validate_due_date(changeset) do
+    case get_field(changeset, :due_date) do
+      %Date{} = due_date ->
+        if Date.compare(due_date, Date.utc_today()) == :lt,
+          do: add_error(changeset, :due_date, "must be today or later"),
+          else: changeset
+
+      _ ->
+        changeset
+    end
   end
 
   defp validate_ayah_range(changeset) do

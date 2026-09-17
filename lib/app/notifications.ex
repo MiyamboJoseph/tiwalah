@@ -2,10 +2,10 @@ defmodule App.Notifications do
   import Ecto.Query
 
   alias App.Accounts.Scope
-  alias App.Accounts.UserNotifier
-  alias App.EmailTemplates
+  alias App.EmailDeliveryEvents
   alias App.Notifications.Notification
   alias App.Repo
+  alias App.Workers.EmailDeliveryWorker
 
   @email_types %{
     "assignment" => :assignment,
@@ -90,7 +90,7 @@ defmodule App.Notifications do
   end
 
   def notify_welcome(user) do
-    deliver_email(%{
+    enqueue(%{
       "type" => "welcome",
       "recipient" => user.email,
       "recipient_user_id" => user.id,
@@ -186,7 +186,7 @@ defmodule App.Notifications do
   end
 
   def notify_reminder(student_email, student_id, title, details \\ %{}) do
-    deliver_email(
+    enqueue(
       Map.merge(
         %{
           "type" => "reminder",
@@ -199,18 +199,19 @@ defmodule App.Notifications do
     )
   end
 
-  defp enqueue(args), do: deliver_email(args)
+  defp enqueue(%{"type" => type} = args) when is_map_key(@email_types, type) do
+    case args |> EmailDeliveryWorker.new() |> Oban.insert() do
+      {:ok, job} ->
+        # Delivery tracking is helpful, but an inability to write a display
+        # record must never turn a successfully queued email into a failed
+        # student or tutor action.
+        _ = EmailDeliveryEvents.record_queued(job)
+        {:ok, job}
 
-  defp deliver_email(%{"type" => type, "recipient" => recipient} = args) do
-    case Map.fetch(@email_types, type) do
-      {:ok, template_type} ->
-        UserNotifier.deliver_notification(
-          recipient,
-          EmailTemplates.notification(template_type, args)
-        )
-
-      :error ->
-        {:error, :unsupported_email_type}
+      error ->
+        error
     end
   end
+
+  defp enqueue(_args), do: {:error, :unsupported_email_type}
 end
