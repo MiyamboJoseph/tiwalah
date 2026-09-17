@@ -18,7 +18,8 @@ defmodule AppWeb.StudentRecitationLive.Show do
            assignment: assignment,
            quran_passage: :loading,
            passage_page: 1,
-           reciter_audio: %{}
+           reciter_audio: %{},
+           active_reciter_ayah: nil
          )
          |> load_passage(assignment)}
 
@@ -49,8 +50,12 @@ defmodule AppWeb.StudentRecitationLive.Show do
   def handle_event("paginate_passage", %{"page" => page}, socket) do
     {:noreply,
      socket
-     |> assign(passage_page: page_number(page), reciter_audio: %{})
+     |> assign(passage_page: page_number(page), reciter_audio: %{}, active_reciter_ayah: nil)
      |> load_reciter_audio()}
+  end
+
+  def handle_event("toggle_reciter_audio", %{"ayah" => ayah}, socket) do
+    {:noreply, assign(socket, active_reciter_ayah: toggled_ayah(socket, ayah))}
   end
 
   def render(assigns) do
@@ -78,6 +83,8 @@ defmodule AppWeb.StudentRecitationLive.Show do
             page={@passage_page}
             on_page_change="paginate_passage"
             reciter_audio={@reciter_audio}
+            active_reciter_ayah={@active_reciter_ayah}
+            on_audio_toggle="toggle_reciter_audio"
           />
         </div>
         <section class="mt-6 space-y-5">
@@ -165,4 +172,12 @@ defmodule AppWeb.StudentRecitationLive.Show do
   end
 
   defp load_reciter_audio(socket), do: socket
+
+  defp toggled_ayah(socket, value) do
+    case Integer.parse(value) do
+      {ayah, ""} when socket.assigns.active_reciter_ayah == ayah -> nil
+      {ayah, ""} -> ayah
+      _ -> nil
+    end
+  end
 end

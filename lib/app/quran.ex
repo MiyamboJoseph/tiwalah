@@ -181,16 +181,28 @@ defmodule App.Quran do
 
   def valid_ayah_range?(surah_name, first_ayah, last_ayah)
       when is_integer(first_ayah) and is_integer(last_ayah) do
-    with {:ok, surah_number} <- surah_number(surah_name),
-         max_ayah <- Enum.at(@ayah_counts, surah_number - 1) do
-      first_ayah >= 1 and last_ayah >= first_ayah and last_ayah <= max_ayah
+    valid_ayah?(surah_name, first_ayah) and valid_ayah?(surah_name, last_ayah) and
+      last_ayah >= first_ayah
+  end
+
+  def ayah_count(surah_name) do
+    with {:ok, surah_number} <- surah_number(surah_name) do
+      Enum.at(@ayah_counts, surah_number - 1)
     else
+      _ -> nil
+    end
+  end
+
+  def valid_ayah?(surah_name, ayah) when is_integer(ayah) do
+    case ayah_count(surah_name) do
+      max_ayah when is_integer(max_ayah) -> ayah >= 1 and ayah <= max_ayah
       _ -> false
     end
   end
 
   def juz_for(surah_name, ayah) when is_integer(ayah) do
-    with {:ok, surah_number} <- surah_number(surah_name) do
+    with true <- valid_ayah?(surah_name, ayah),
+         {:ok, surah_number} <- surah_number(surah_name) do
       @juz_starts
       |> Enum.with_index(1)
       |> Enum.reduce(1, fn {{start_surah, start_ayah}, juz}, current_juz ->
@@ -198,6 +210,15 @@ defmodule App.Quran do
       end)
     else
       _ -> nil
+    end
+  end
+
+  @doc "Returns whether an āyah range stays within a single Juz."
+  def same_juz_range?(surah_name, first_ayah, last_ayah)
+      when is_integer(first_ayah) and is_integer(last_ayah) do
+    case {juz_for(surah_name, first_ayah), juz_for(surah_name, last_ayah)} do
+      {juz, juz} when is_integer(juz) -> true
+      _ -> false
     end
   end
 end

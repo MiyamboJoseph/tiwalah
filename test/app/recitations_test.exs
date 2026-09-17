@@ -2,7 +2,7 @@ defmodule App.RecitationsTest do
   use App.DataCase
 
   alias App.Recitations
-  alias App.Recitations.AssignmentTemplate
+  alias App.Recitations.{Assignment, AssignmentTemplate, Submission}
   alias App.{Accounts, Repo}
 
   import App.AccountsFixtures
@@ -73,6 +73,27 @@ defmodule App.RecitationsTest do
 
     refute changeset.valid?
     assert "does not match the first selected ayah" in errors_on(changeset).juz_number
+  end
+
+  test "repeat guidance flags each ayah outside the assignment range" do
+    assignment = %Assignment{ayah_from: 20, ayah_to: 35}
+
+    changeset =
+      Submission.review_changeset(
+        %Submission{},
+        %{
+          "status" => "repeat_required",
+          "feedback" => "Please revise this passage.",
+          "repeat_ayah_from" => "10",
+          "repeat_ayah_to" => "55",
+          "repeat_instruction" => "Listen carefully, then record again."
+        },
+        assignment
+      )
+
+    refute changeset.valid?
+    assert "must be within the assigned ayah range" in errors_on(changeset).repeat_ayah_from
+    assert "must be within the assigned ayah range" in errors_on(changeset).repeat_ayah_to
   end
 
   test "a student can request a verified tutor by selected tutor id" do

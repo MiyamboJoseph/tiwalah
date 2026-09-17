@@ -166,6 +166,8 @@ defmodule AppWeb.RecitationComponents do
   attr :on_show_all, :string, default: nil
   attr :word_by_word, :map, default: %{}
   attr :reciter_audio, :map, default: %{}
+  attr :active_reciter_ayah, :integer, default: nil
+  attr :on_audio_toggle, :string, default: nil
 
   def quran_passage(assigns) do
     assigns = assign_passage_page(assigns)
@@ -244,16 +246,42 @@ defmodule AppWeb.RecitationComponents do
               </span>
             </div>
           </details>
-          <div
-            :if={clip = Map.get(@reciter_audio, verse.number)}
-            class="mt-4 rounded-lg bg-emerald-50 p-3"
-          >
-            <p class="mb-2 text-xs font-semibold text-emerald-900">
-              Listen to {reciter_name(clip)} recite this āyah
-            </p>
-            <audio controls preload="none" class="w-full" src={clip.url}>
-              Your browser does not support audio playback.
-            </audio>
+          <div :if={clip = Map.get(@reciter_audio, verse.number)} class="mt-4">
+            <button
+              :if={@active_reciter_ayah != verse.number}
+              type="button"
+              phx-click={@on_audio_toggle}
+              phx-value-ayah={verse.number}
+              class="inline-flex items-center gap-2 rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50"
+            >
+              <.icon name="hero-play" class="size-4" /> Listen to this āyah
+            </button>
+            <div
+              :if={@active_reciter_ayah == verse.number}
+              id={"reciter-audio-#{verse.number}"}
+              phx-hook="AudioFallback"
+              class="rounded-xl border border-emerald-900/10 bg-emerald-50 p-3"
+            >
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-xs font-semibold text-emerald-900">
+                  Reference recitation · {reciter_name(clip)}
+                </p>
+                <button
+                  type="button"
+                  phx-click={@on_audio_toggle}
+                  phx-value-ayah={verse.number}
+                  class="text-xs font-semibold text-emerald-800 underline underline-offset-2"
+                >
+                  Hide player
+                </button>
+              </div>
+              <audio controls preload="metadata" class="w-full" src={clip.url}>
+                Your browser does not support audio playback.
+              </audio>
+              <p data-audio-error class="mt-2 hidden text-xs leading-5 text-rose-700">
+                This reference audio could not be loaded. Please try again shortly.
+              </p>
+            </div>
           </div>
         </article>
       </div>

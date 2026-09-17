@@ -256,6 +256,8 @@ defmodule AppWeb.UserLive.Registration do
                 ]}
                 required
               />
+              <%!-- Prayer-aware reminders will return after the prayer-times dashboard feature is reintroduced. --%>
+              <%!--
               <div
                 :if={
                   (@step == 2 && @form[:role].value in ["student", :student]) ||
@@ -298,6 +300,7 @@ defmodule AppWeb.UserLive.Registration do
                   data-longitude
                 />
               </div>
+              --%>
 
               <div
                 :if={

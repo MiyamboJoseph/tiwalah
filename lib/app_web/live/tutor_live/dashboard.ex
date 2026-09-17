@@ -59,6 +59,7 @@ defmodule AppWeb.TutorLive.Dashboard do
   end
 
   def handle_event("validate", %{"assignment" => params}, socket) do
+    params = assign_juz_from_first_ayah(params)
     changeset = Assignment.changeset(%Assignment{}, params) |> Map.put(:action, :validate)
 
     {:noreply,
@@ -385,7 +386,14 @@ defmodule AppWeb.TutorLive.Dashboard do
               placeholder="Morning revision"
             />
             <div class="grid gap-3 sm:grid-cols-2">
-              <.input field={@form[:juz_number]} type="number" label="Juz" min="1" max="30" /><.input
+              <.input
+                field={@form[:juz_number]}
+                type="number"
+                label="Juz"
+                min="1"
+                max="30"
+                readonly
+              /><.input
                 field={@form[:surah_name]}
                 type="select"
                 label="Surah"
@@ -394,11 +402,18 @@ defmodule AppWeb.TutorLive.Dashboard do
               />
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
-              <.input field={@form[:ayah_from]} type="number" label="First ayah" min="1" /><.input
+              <.input
+                field={@form[:ayah_from]}
+                type="number"
+                label="First ayah"
+                min="1"
+                phx-debounce="250"
+              /><.input
                 field={@form[:ayah_to]}
                 type="number"
                 label="Last ayah"
                 min="1"
+                phx-debounce="250"
               />
             </div>
             <.input field={@form[:due_date]} type="date" label="Due date (optional)" />
@@ -430,6 +445,32 @@ defmodule AppWeb.TutorLive.Dashboard do
     </Layouts.app>
     """
   end
+
+  defp assign_juz_from_first_ayah(%{"surah_name" => surah, "ayah_from" => first_ayah} = params) do
+    case {surah, parse_ayah(first_ayah)} do
+      {surah, ayah} when is_binary(surah) and is_integer(ayah) ->
+        case Quran.juz_for(surah, ayah) do
+          juz when is_integer(juz) -> Map.put(params, "juz_number", Integer.to_string(juz))
+          _ -> params
+        end
+
+      _ ->
+        Map.put(params, "juz_number", "")
+    end
+  end
+
+  defp assign_juz_from_first_ayah(params), do: params
+
+  defp parse_ayah(ayah) when is_integer(ayah), do: ayah
+
+  defp parse_ayah(ayah) when is_binary(ayah) do
+    case Integer.parse(ayah) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
+
+  defp parse_ayah(_ayah), do: nil
 
   defp load_dashboard(socket, page \\ nil) do
     scope = socket.assigns.current_scope

@@ -13,7 +13,7 @@ defmodule AppWeb.DashboardLive do
 
         {:ok,
          socket
-         |> assign(daily_dua: nil, hijri_date: nil, prayer_times: :loading)
+         |> assign(daily_dua: nil, hijri_date: nil)
          |> load_dashboard()
          |> load_learning_context()}
 
@@ -29,12 +29,11 @@ defmodule AppWeb.DashboardLive do
     {:noreply, load_dashboard(socket)}
   end
 
-  def handle_info({:student_learning_context_loaded, dua, hijri_date, prayer_times}, socket) do
+  def handle_info({:student_learning_context_loaded, dua, hijri_date}, socket) do
     {:noreply,
      assign(socket,
        daily_dua: result_value(dua),
-       hijri_date: result_value(hijri_date),
-       prayer_times: result_value(prayer_times) || %{}
+       hijri_date: result_value(hijri_date)
      )}
   end
 
@@ -134,7 +133,13 @@ defmodule AppWeb.DashboardLive do
   def render(assigns) do
     pending = assigns.assignment_counts.assigned + assigns.assignment_counts.repeat_required
     reviewed = assigns.assignment_counts.reviewed
-    assigns = assign(assigns, pending: pending, reviewed: reviewed)
+
+    assigns =
+      assign(assigns,
+        pending: pending,
+        reviewed: reviewed,
+        next_step: next_step(assigns)
+      )
 
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -180,44 +185,29 @@ defmodule AppWeb.DashboardLive do
         </article>
         <article class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200">
           <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-700">
-            Today’s prayer times
+            Your next step
           </p>
-          <p class="mt-1 text-sm text-stone-600 dark:text-stone-300">
-            Local times based on your saved approximate reminder location.
-          </p>
-          <div
-            :if={is_map(@prayer_times) && map_size(@prayer_times) > 0}
-            class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3"
-          >
-            <div
-              :for={prayer <- prayer_order()}
-              :if={@prayer_times[prayer]}
-              class="rounded-xl bg-emerald-50 p-3 text-center"
-            >
-              <p class="text-xs font-semibold uppercase tracking-wide text-stone-600">
-                {prayer_label(prayer)}
-              </p>
-              <p class="mt-1 text-lg font-bold text-emerald-950">{@prayer_times[prayer]}</p>
+          <div class="mt-4 rounded-xl bg-emerald-50 p-4">
+            <div class="flex items-start gap-3">
+              <.icon name={@next_step.icon} class="mt-0.5 size-5 shrink-0 text-emerald-800" />
+              <div>
+                <h2 class="font-semibold text-emerald-950">{@next_step.title}</h2>
+                <p class="mt-1 text-sm leading-6 text-stone-700">{@next_step.description}</p>
+                <.link
+                  navigate={@next_step.path}
+                  class="mt-3 inline-block text-sm font-semibold text-emerald-800 hover:underline"
+                >
+                  {@next_step.action} →
+                </.link>
+              </div>
             </div>
-          </div>
-          <p :if={@prayer_times == :loading} class="mt-4 text-sm text-stone-500">
-            Loading prayer times…
-          </p>
-          <div
-            :if={@prayer_times == %{}}
-            class="mt-4 rounded-xl bg-stone-50 p-4 text-sm text-stone-600 dark:bg-base-300 dark:text-stone-300"
-          >
-            Save an approximate location to see your local prayer times and receive Maghrib-aware practice reminders.
-            <.link
-              navigate={~p"/users/settings"}
-              class="ml-1 font-semibold text-emerald-800 hover:underline"
-            >
-              Set location
-            </.link>
           </div>
         </article>
       </section>
-      <section class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200">
+      <section
+        id="teacher-directory"
+        class="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:bg-base-200"
+      >
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p class="text-sm font-bold uppercase tracking-[0.18em] text-amber-700">
@@ -562,35 +552,81 @@ defmodule AppWeb.DashboardLive do
   defp tutor_verification_label(:rejected), do: "Verification needs attention"
   defp tutor_verification_label(_status), do: "Tutor profile"
 
-  defp prayer_label(:fajr), do: "Fajr"
-  defp prayer_label(:sunrise), do: "Sunrise"
-  defp prayer_label(:dhuhr), do: "Dhuhr"
-  defp prayer_label(:asr), do: "Asr"
-  defp prayer_label(:maghrib), do: "Maghrib"
-  defp prayer_label(:isha), do: "Isha"
-
-  defp prayer_order, do: [:fajr, :sunrise, :dhuhr, :asr, :maghrib, :isha]
-
   defp result_value({:ok, value}), do: value
   defp result_value(_), do: nil
+
+  defp next_step(assigns) do
+    case Enum.find(assigns.assignments, &(&1.status in [:repeat_required, :assigned, :submitted])) do
+      %{id: id, status: :repeat_required} ->
+        %{
+          title: "Practise your focus āyāt",
+          description:
+            "Your tutor has requested a repeat. Read the guidance, practise the focus āyāt, and submit a revised recording.",
+          action: "Record revised recitation",
+          path: ~p"/recitations/new/#{id}",
+          icon: "hero-arrow-path"
+        }
+
+      %{id: id, status: :assigned} ->
+        %{
+          title: "Record your assigned recitation",
+          description:
+            "Your next portion is ready. Take a quiet moment to practise, then record your best attempt.",
+          action: "Record recitation",
+          path: ~p"/recitations/new/#{id}",
+          icon: "hero-microphone"
+        }
+
+      %{id: id, status: :submitted} ->
+        %{
+          title: "Your tutor is reviewing your recording",
+          description:
+            "Your recitation has been submitted. You will see your tutor’s feedback here when it is ready.",
+          action: "View submission",
+          path: ~p"/recitations/#{id}",
+          icon: "hero-clock"
+        }
+
+      _ when assigns.requested_tutors != [] ->
+        %{
+          title: "Your learning request is awaiting a response",
+          description:
+            "The tutor will review your request before starting a private learning connection.",
+          action: "View pending request",
+          path: ~p"/dashboard#teacher-directory",
+          icon: "hero-clock"
+        }
+
+      _ when assigns.active_tutors == [] ->
+        %{
+          title: "Choose a verified teacher to begin",
+          description:
+            "Browse available Qur’an teachers and send a learning request when you find a good fit.",
+          action: "Find a teacher",
+          path: ~p"/dashboard#teacher-directory",
+          icon: "hero-academic-cap"
+        }
+
+      _ ->
+        %{
+          title: "Wait for your next portion",
+          description:
+            "Your tutor has not assigned a new recitation yet. Your next practice will appear here.",
+          action: "View your tutors",
+          path: ~p"/dashboard#teacher-directory",
+          icon: "hero-book-open"
+        }
+    end
+  end
 
   defp load_learning_context(socket) do
     if connected?(socket) do
       parent = self()
-      user = socket.assigns.current_scope.user
 
       Task.start(fn ->
-        prayer_times =
-          if is_number(user.latitude) and is_number(user.longitude) do
-            Learning.prayer_times(user.latitude, user.longitude, user.time_zone)
-          else
-            {:error, :location_not_set}
-          end
-
         send(
           parent,
-          {:student_learning_context_loaded, Learning.daily_dua(), Learning.hijri_date(),
-           prayer_times}
+          {:student_learning_context_loaded, Learning.daily_dua(), Learning.hijri_date()}
         )
       end)
     end

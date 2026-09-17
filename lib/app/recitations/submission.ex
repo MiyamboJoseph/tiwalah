@@ -78,14 +78,24 @@ defmodule App.Recitations.Submission do
     first_ayah = get_field(changeset, :repeat_ayah_from)
     last_ayah = get_field(changeset, :repeat_ayah_to)
 
-    if get_field(changeset, :status) == :repeat_required and is_integer(first_ayah) and
-         is_integer(last_ayah) and
-         (first_ayah < assignment.ayah_from or last_ayah > assignment.ayah_to) do
-      add_error(changeset, :repeat_ayah_to, "must be within the assigned ayah range")
+    if get_field(changeset, :status) == :repeat_required do
+      changeset
+      |> validate_repeat_ayah_bound(:repeat_ayah_from, first_ayah, assignment)
+      |> validate_repeat_ayah_bound(:repeat_ayah_to, last_ayah, assignment)
     else
       changeset
     end
   end
 
   defp validate_repeat_focus(changeset, _assignment), do: changeset
+
+  defp validate_repeat_ayah_bound(changeset, field, ayah, assignment) when is_integer(ayah) do
+    if ayah < assignment.ayah_from or ayah > assignment.ayah_to do
+      add_error(changeset, field, "must be within the assigned ayah range")
+    else
+      changeset
+    end
+  end
+
+  defp validate_repeat_ayah_bound(changeset, _field, _ayah, _assignment), do: changeset
 end
