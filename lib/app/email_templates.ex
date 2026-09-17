@@ -49,7 +49,7 @@ defmodule App.EmailTemplates do
     {portal_path, next_step} =
       if args["role"] == "tutor" do
         {"/tutor",
-         "Complete your teaching profile and wait for its verification before students can request to learn with you."}
+         "Your account is set up for teaching. Kindly log in and explore the system while you wait for verification, after which students can request to learn with you."}
       else
         {"/dashboard",
          "Choose a verified Qur’an teacher, send a learning request, and begin once they accept it."}

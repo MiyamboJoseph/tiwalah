@@ -42,7 +42,9 @@ defmodule App.Accounts do
   def get_user_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
     user = Repo.get_by(User, email: normalize_email(email))
-    if User.valid_password?(user, password) and active?(user), do: user
+
+    if User.valid_password?(user, password) and active?(user) and not is_nil(user.confirmed_at),
+      do: user
   end
 
   @doc """
@@ -84,6 +86,47 @@ defmodule App.Accounts do
 
   def change_user_registration(user, attrs \\ %{}, opts \\ []) do
     User.registration_changeset(user, attrs, opts)
+  end
+
+  @doc "Sends a short-lived confirmation link for a newly registered password account."
+  def deliver_user_confirmation_instructions(%User{} = user, confirmation_url_fun)
+      when is_function(confirmation_url_fun, 1) do
+    Repo.delete_all(
+      from(token in UserToken, where: token.user_id == ^user.id and token.context == "confirm")
+    )
+
+    {encoded_token, confirmation_token} = UserToken.build_email_token(user, "confirm")
+    Repo.insert!(confirmation_token)
+    UserNotifier.deliver_confirmation_instructions(user, confirmation_url_fun.(encoded_token))
+  end
+
+  @doc "Confirms a password account without creating a session."
+  def confirm_user(token) do
+    with {:ok, query} <- UserToken.verify_confirmation_token_query(token),
+         {%User{} = user, _user_token} <- Repo.one(query),
+         true <- active?(user) do
+      Repo.transact(fn ->
+        case Repo.update(User.confirm_changeset(user)) do
+          {:ok, confirmed_user} ->
+            Repo.delete_all(
+              from(token in UserToken,
+                where: token.user_id == ^confirmed_user.id and token.context == "confirm"
+              )
+            )
+
+            {:ok, confirmed_user}
+
+          {:error, changeset} ->
+            Repo.rollback(changeset)
+        end
+      end)
+      |> case do
+        {:ok, confirmed_user} -> {:ok, confirmed_user}
+        {:error, _reason} -> {:error, :not_found}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
   end
 
   def change_user_practice_location(user, attrs \\ %{}) do

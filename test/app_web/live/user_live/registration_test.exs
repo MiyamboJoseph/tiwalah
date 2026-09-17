@@ -78,4 +78,85 @@ defmodule AppWeb.UserLive.RegistrationTest do
       assert login_html =~ "Welcome to Tilawah"
     end
   end
+
+  describe "registration wizard" do
+    @tag :role_sync
+    test "role links select the matching account type", %{conn: conn} do
+      for role <- ["student", "tutor"] do
+        {:ok, lv, _html} = live(conn, ~p"/users/register?#{[role: role]}")
+        assert has_element?(lv, "input[name='user[role]'][value='#{role}'][checked]")
+      end
+    end
+
+    @tag :role_sync
+    test "switching roles updates the URL and preserves personal details", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/register?role=tutor")
+
+      for role <- ["student", "tutor"] do
+        lv
+        |> form("#registration_form")
+        |> render_change(
+          user: %{role: role, first_name: "Amina", last_name: "Student", gender: "female"}
+        )
+
+        assert_patch(lv, ~p"/users/register?#{[role: role]}")
+        assert has_element?(lv, "input[name='user[role]'][value='#{role}'][checked]")
+        assert has_element?(lv, "input[name='user[first_name]'][value='Amina']")
+      end
+    end
+
+    @tag :role_sync
+    test "URL changes select the matching role without losing entered details", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/register?role=student")
+      lv |> form("#registration_form") |> render_change(user: %{first_name: "Amina"})
+      render_patch(lv, ~p"/users/register?role=tutor")
+      assert has_element?(lv, "input[name='user[role]'][value='tutor'][checked]")
+      assert has_element?(lv, "input[name='user[first_name]'][value='Amina']")
+    end
+
+    test "moves a student from personal details to contact details", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/register?role=student")
+
+      html =
+        lv
+        |> form("#registration_form", %{
+          "wizard_action" => "next",
+          "user" => %{
+            "role" => "student",
+            "first_name" => "Amina",
+            "last_name" => "Student",
+            "gender" => "female"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Step 2 of 3"
+      assert html =~ "Contact details"
+      assert html =~ "Your account type"
+      assert html =~ "Student"
+    end
+
+    test "shows a tutor profile with the correct step title", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/register?role=tutor")
+
+      html =
+        lv
+        |> form("#registration_form", %{
+          "wizard_action" => "next",
+          "user" => %{
+            "role" => "tutor",
+            "first_name" => "Yusuf",
+            "last_name" => "Teacher",
+            "gender" => "male"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Step 2 of 3"
+      assert html =~ "Tutor profile"
+      assert html =~ "Your teaching profile"
+      assert html =~ "Qur’an teacher"
+      assert html =~ "profiles are reviewed"
+    end
+  end
 end

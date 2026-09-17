@@ -1,6 +1,8 @@
 defmodule AppWeb.UserLive.Login do
   use AppWeb, :live_view
 
+  alias App.Accounts
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -77,6 +79,32 @@ defmodule AppWeb.UserLive.Login do
                 Sign in <span aria-hidden="true">→</span>
               </.button>
             </.form>
+            <div :if={!@current_scope} class="mt-5 border-t border-emerald-900/10 pt-5">
+              <p class="text-sm font-semibold text-emerald-950 dark:text-emerald-100">
+                Need a new confirmation email?
+              </p>
+              <p class="mt-1 text-xs leading-5 text-stone-600 dark:text-stone-300">
+                Enter the email used for your account and we will send another confirmation link if one is needed.
+              </p>
+              <.form
+                for={@confirmation_form}
+                id="resend_confirmation_form"
+                phx-submit="resend_confirmation"
+                class="mt-3 flex flex-col gap-2 sm:flex-row"
+              >
+                <.input
+                  field={@confirmation_form[:email]}
+                  type="email"
+                  aria-label="Email address for a new confirmation link"
+                  placeholder="you@example.com"
+                  autocomplete="email"
+                  required
+                />
+                <.button class="shrink-0 border border-emerald-800 bg-white px-3 py-2 text-sm text-emerald-900 hover:bg-emerald-50 dark:bg-base-200">
+                  Resend confirmation email
+                </.button>
+              </.form>
+            </div>
             <p
               :if={!@current_scope}
               class="mt-7 text-center text-sm text-stone-600 dark:text-stone-300"
@@ -104,11 +132,36 @@ defmodule AppWeb.UserLive.Login do
 
     form = to_form(%{"email" => email}, as: "user")
 
-    {:ok, assign(socket, form: form, trigger_submit: false)}
+    {:ok,
+     assign(socket,
+       form: form,
+       confirmation_form: to_form(%{}, as: "confirmation"),
+       trigger_submit: false
+     )}
   end
 
   @impl true
   def handle_event("submit_password", _params, socket) do
     {:noreply, assign(socket, :trigger_submit, true)}
+  end
+
+  def handle_event("resend_confirmation", %{"confirmation" => %{"email" => email}}, socket) do
+    if App.AuthRateLimiter.allowed?(:confirmation, email) do
+      case Accounts.get_user_by_email(email) do
+        %{confirmed_at: nil, account_status: :active} = user ->
+          Accounts.deliver_user_confirmation_instructions(
+            user,
+            &url(~p"/users/confirm/#{&1}")
+          )
+
+        _ ->
+          :ok
+      end
+    end
+
+    {:noreply,
+     socket
+     |> assign(confirmation_form: to_form(%{}, as: "confirmation"))
+     |> put_flash(:info, "If that account needs confirmation, a new link has been sent.")}
   end
 end

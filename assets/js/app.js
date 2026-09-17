@@ -210,14 +210,23 @@ const LocationPicker = {
 
     if (!button || !latitude || !longitude) return
 
+    const updateStatus = (message, state) => {
+      status.textContent = message
+      status.dataset.locationState = state
+      status.classList.remove("text-stone-600", "text-emerald-700", "text-rose-700")
+      status.classList.add(
+        state === "success" ? "text-emerald-700" : state === "error" ? "text-rose-700" : "text-stone-600",
+      )
+    }
+
     button.addEventListener("click", () => {
       if (!navigator.geolocation) {
-        status.textContent = "Location is unavailable in this browser. You can still use normal reminders."
+        updateStatus("Location is unavailable in this browser. You can still use normal reminders.", "error")
         return
       }
 
       button.disabled = true
-      status.textContent = "Requesting your location…"
+      updateStatus("Requesting your approximate location…", "pending")
 
       navigator.geolocation.getCurrentPosition(
         position => {
@@ -231,15 +240,17 @@ const LocationPicker = {
             input.dispatchEvent(new Event("change", {bubbles: true}))
           })
 
-          status.textContent = "Approximate location saved. Due-practice reminders will arrive shortly after Maghrib."
-          button.textContent = "Approximate location saved"
+          const completionMessage = this.el.dataset.locationSaveMessage || "Location detected. Save your changes to use it for prayer-aware reminders."
+
+          updateStatus(completionMessage, "success")
+          button.textContent = "Location detected"
         },
         error => {
           const message = error.code === error.PERMISSION_DENIED
             ? "Location permission was not granted. You can continue with normal reminders."
             : "We could not determine your location. You can continue with normal reminders."
 
-          status.textContent = message
+          updateStatus(message, "error")
           button.disabled = false
         },
         {enableHighAccuracy: false, timeout: 10_000, maximumAge: 86_400_000},

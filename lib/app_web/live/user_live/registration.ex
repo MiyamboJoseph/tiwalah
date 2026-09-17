@@ -5,7 +5,6 @@ defmodule AppWeb.UserLive.Registration do
 
   alias App.Accounts
   alias App.Accounts.User
-  alias App.Notifications
 
   @impl true
   def render(assigns) do
@@ -79,6 +78,27 @@ defmodule AppWeb.UserLive.Registration do
                 </span>
               </div>
             </div>
+
+            <section
+              :if={@step > 1}
+              class="mt-5 flex items-start justify-between gap-3 rounded-xl border border-emerald-900/10 bg-emerald-50/60 px-4 py-3"
+              aria-label="Selected account type"
+            >
+              <div>
+                <p class="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
+                  Your account type
+                </p>
+                <p class="mt-1 text-sm font-semibold text-emerald-950">
+                  {role_label(@form[:role].value)}
+                </p>
+              </div>
+              <p
+                :if={@form[:role].value in ["tutor", :tutor]}
+                class="max-w-xs text-right text-xs leading-5 text-stone-600"
+              >
+                Tutor profiles are reviewed before students can send learning requests.
+              </p>
+            </section>
 
             <.form
               for={@form}
@@ -161,9 +181,9 @@ defmodule AppWeb.UserLive.Registration do
                 :if={@step == 2 && @form[:role].value in ["tutor", :tutor]}
                 class="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4"
               >
-                <p class="text-sm font-bold text-emerald-950">Tutor profile</p>
+                <p class="text-sm font-bold text-emerald-950">Your teaching profile</p>
                 <p class="mt-1 text-xs leading-5 text-stone-600">
-                  This helps students make an informed decision before accepting your connection request.
+                  Students will see these details after an administrator verifies your profile.
                 </p>
                 <div class="mt-4 space-y-4">
                   <.input
@@ -243,13 +263,18 @@ defmodule AppWeb.UserLive.Registration do
                 }
                 id="registration-practice-location"
                 phx-hook="LocationPicker"
+                data-location-save-message="Location detected. Complete registration to save it for prayer-aware reminders."
                 class="sm:col-span-2 rounded-xl border border-emerald-900/10 bg-emerald-50/50 p-3"
               >
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p class="text-sm font-semibold text-emerald-950">Prayer-aware reminders</p>
-                    <p data-location-status class="mt-1 text-xs leading-5 text-stone-600">
-                      Optional: save an approximate location to calculate prayer times. It is shared with UmmahAPI only when calculating your due-practice reminder.
+                    <p
+                      data-location-status
+                      aria-live="polite"
+                      class="mt-1 text-xs leading-5 text-stone-600"
+                    >
+                      Optional: save an approximate location to calculate prayer times. It is shared with UmmahAPI only when calculating your due-practice reminder, and you can change or remove it later in Settings.
                     </p>
                   </div>
                   <button
@@ -298,6 +323,15 @@ defmodule AppWeb.UserLive.Registration do
                   required
                 />
               </div>
+              <p
+                :if={
+                  (@step == 2 && @form[:role].value in ["student", :student]) ||
+                    (@step == 3 && @form[:role].value in ["tutor", :tutor])
+                }
+                class="-mt-2 text-xs leading-5 text-stone-500"
+              >
+                Your phone number is private. It is used only for account support and is not shown to students or tutors.
+              </p>
 
               <.input
                 :if={
@@ -361,6 +395,9 @@ defmodule AppWeb.UserLive.Registration do
                   Terms of Service
                 </.link>
                 and <.link navigate={~p"/privacy"} class="font-semibold text-emerald-800 underline">Privacy Notice</.link>. Your profile and contact details are used only to run your recitation circle and connect you through student-approved learning relationships.
+              </p>
+              <p :if={@step == 3} class="-mt-3 text-xs leading-5 text-stone-500 dark:text-stone-400">
+                We will email a confirmation link before you can sign in. This confirms that the address belongs to you.
               </p>
 
               <div class="flex flex-wrap items-center justify-between gap-3 border-t border-emerald-900/10 pt-4">
@@ -430,6 +467,24 @@ defmodule AppWeb.UserLive.Registration do
   end
 
   @impl true
+  def handle_params(params, _uri, socket) do
+    role = if params["role"] == "tutor", do: "tutor", else: "student"
+
+    socket =
+      if socket.assigns.registration_params["role"] == role do
+        socket
+      else
+        registration_params = Map.put(socket.assigns.registration_params, "role", role)
+
+        socket
+        |> assign(step: 1, registration_params: registration_params)
+        |> assign_form(build_changeset(registration_params))
+      end
+
+    {:noreply, assign(socket, :url_role, role)}
+  end
+
+  @impl true
   def handle_event("save", %{"wizard_action" => "next", "user" => params}, socket) do
     params = merged_params(socket, params)
 
@@ -437,10 +492,14 @@ defmodule AppWeb.UserLive.Registration do
       {:noreply,
        socket
        |> assign(step: socket.assigns.step + 1, registration_params: params)
-       |> assign_form(build_changeset(params))}
+       |> assign_form(build_changeset(params))
+       |> sync_role_url(params)}
     else
       {:noreply,
-       socket |> assign(registration_params: params) |> assign_form(validation_changeset(params))}
+       socket
+       |> assign(registration_params: params)
+       |> assign_form(validation_changeset(params))
+       |> sync_role_url(params)}
     end
   end
 
@@ -477,8 +536,21 @@ defmodule AppWeb.UserLive.Registration do
     params = merged_params(socket, user_params)
 
     {:noreply,
-     socket |> assign(registration_params: params) |> assign_form(build_changeset(params))}
+     socket
+     |> assign(registration_params: params)
+     |> assign_form(build_changeset(params))
+     |> sync_role_url(params)}
   end
+
+  defp sync_role_url(socket, %{"role" => role}) when role in ["student", "tutor"] do
+    if socket.assigns.url_role == role do
+      socket
+    else
+      push_patch(socket, to: ~p"/users/register?#{[role: role]}", replace: true)
+    end
+  end
+
+  defp sync_role_url(socket, _params), do: socket
 
   defp merged_params(socket, params) do
     merged = Map.merge(socket.assigns.registration_params, params)
@@ -532,21 +604,41 @@ defmodule AppWeb.UserLive.Registration do
   defp step_fields(3, _role), do: [:email, :password, :password_confirmation, :terms_accepted]
 
   defp step_title(1, _role), do: "About you"
-  defp step_title(2, "tutor"), do: "Tutor profile"
+  defp step_title(2, role) when role in ["tutor", :tutor], do: "Tutor profile"
   defp step_title(2, _role), do: "Contact details"
   defp step_title(3, _role), do: "Secure access"
+
+  defp role_label(role) when role in ["tutor", :tutor], do: "Qur’an teacher"
+  defp role_label(_role), do: "Student"
 
   defp register_user(socket, user_params) do
     case Accounts.register_user(user_params) do
       {:ok, user} ->
-        Notifications.notify_welcome(user)
+        confirmation_result =
+          Accounts.deliver_user_confirmation_instructions(
+            user,
+            &url(~p"/users/confirm/#{&1}")
+          )
+
+        message =
+          if user.role == :tutor do
+            "Your account was created. Check your email to confirm it. Your tutor profile will then await administrator verification before students can request to learn with you."
+          else
+            "Your account was created. Check your email to confirm it before signing in."
+          end
+
+        message =
+          case confirmation_result do
+            {:ok, _email} ->
+              message
+
+            {:error, _reason} ->
+              "Your account was created, but we could not send the confirmation email. Use ‘Resend confirmation email’ on the sign-in page."
+          end
 
         {:noreply,
          socket
-         |> put_flash(
-           :info,
-           "Your account is ready. Please sign in with your email and password."
-         )
+         |> put_flash(:info, message)
          |> push_navigate(to: ~p"/users/log-in")}
 
       {:error, %Ecto.Changeset{} = changeset} ->

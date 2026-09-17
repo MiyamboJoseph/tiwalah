@@ -88,6 +88,7 @@ defmodule AppWeb.Router do
       live "/users/log-in/:token", UserLive.Confirmation, :new
     end
 
+    get "/users/confirm/:token", UserConfirmationController, :show
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
   end

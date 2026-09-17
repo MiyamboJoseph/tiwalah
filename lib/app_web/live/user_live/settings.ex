@@ -46,6 +46,7 @@ defmodule AppWeb.UserLive.Settings do
         <div
           id="settings-practice-location"
           phx-hook="LocationPicker"
+          data-location-save-message="Location detected. Select Save reminder location to keep it."
           class="mt-4 rounded-xl border border-emerald-900/10 bg-emerald-50/50 p-4"
         >
           <button
@@ -55,7 +56,7 @@ defmodule AppWeb.UserLive.Settings do
           >
             Use approximate location
           </button>
-          <p data-location-status class="mt-2 text-xs text-stone-600">
+          <p data-location-status aria-live="polite" class="mt-2 text-xs text-stone-600">
             Your browser will ask permission before sharing coordinates with Tilawah.
           </p>
           <input

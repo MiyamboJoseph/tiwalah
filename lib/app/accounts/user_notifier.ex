@@ -43,6 +43,11 @@ defmodule App.Accounts.UserNotifier do
     end
   end
 
+  @doc "Delivers an email-address confirmation link for a password account."
+  def deliver_confirmation_instructions(user, url) do
+    deliver(user.email, EmailTemplates.auth(:confirmation, user, url))
+  end
+
   @doc """
   Delivers a normal Tilawah lifecycle email immediately using the same mailer
   as account confirmation and sign-in messages.
@@ -51,9 +56,5 @@ defmodule App.Accounts.UserNotifier do
 
   defp deliver_magic_link_instructions(user, url) do
     deliver(user.email, EmailTemplates.auth(:magic_link, user, url))
-  end
-
-  defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, EmailTemplates.auth(:confirmation, user, url))
   end
 end

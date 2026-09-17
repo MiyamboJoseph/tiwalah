@@ -31,4 +31,5 @@ defmodule App.AuthRateLimiter do
 
   defp limits(:login), do: {8, 300}
   defp limits(:registration), do: {4, 3_600}
+  defp limits(:confirmation), do: {3, 3_600}
 end

@@ -373,6 +373,36 @@ defmodule App.AccountsTest do
     end
   end
 
+  describe "password account confirmation" do
+    test "confirms a registered password account without creating a session" do
+      user = unconfirmed_user_fixture()
+
+      token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_confirmation_instructions(user, url)
+        end)
+
+      assert {:ok, confirmed_user} = Accounts.confirm_user(token)
+      assert confirmed_user.id == user.id
+      assert confirmed_user.confirmed_at
+      assert {:error, :not_found} = Accounts.confirm_user(token)
+    end
+
+    test "does not allow a password sign-in until the email is confirmed" do
+      user = unconfirmed_user_fixture()
+
+      refute Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+
+      token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_confirmation_instructions(user, url)
+        end)
+
+      assert {:ok, _confirmed_user} = Accounts.confirm_user(token)
+      assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+    end
+  end
+
   describe "delete_user_session_token/1" do
     test "deletes the token" do
       user = user_fixture()
